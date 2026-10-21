@@ -58,7 +58,7 @@ jobs:
           cp -R kindle/extensions $K/4-HomeDisplay/
           touch $K/5-Guncelleme-Engeli/update.bin.tmp.partial/.bos
           cp kindle/kurulum/OKU-BENI.txt $K/
-          (cd $K && find . -type f -not -name '.bos' -exec md5sum {} \; | sort -k2 > MD5SUMS.txt)
+          (cd $K && find . -type f -not -name '.bos' -not -name MD5SUMS.txt -exec md5sum {} \; | sort -k2 > MD5SUMS.txt)
           cat $K/MD5SUMS.txt
           zip -qr kindle-kurulum.zip $K
       - name: Sürüme yükle
