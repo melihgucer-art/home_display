@@ -360,3 +360,57 @@ def test_config_is_valid():
         assert isinstance(loc[k], float)
     assert math.dist((loc["latitude"], loc["longitude"]), (40.97, 29.08)) < 0.05, "konum Erenköy olmalı"
     assert "rotate" not in cfg["display"]
+
+
+# ------------------------------------------------------------------ eczane konumu (Çelebi Sk.'ya göre)
+
+@pytest.mark.parametrize("address,expected", [
+    ("Sahrayıcedid Mah. Atatürk Cad. No:46/A", "Atatürk Cd."),
+    ("OSMANAĞA MAH.MİSAKI MİLLİ CD. TALİMHANE SK.NO 5/B KADIKÖY", "Misakı Milli Cd."),
+    ("ERENKÖY MAH. KANTARCI RIZA SOK. NO:18/C", "Kantarcı Rıza Sk."),
+    ("19 Mayıs Mahallesi, Şemsettin Günaltay Caddesi No:188/B", "Şemsettin Günaltay Cd."),
+    ("Koşuyolu Mahallesi, Alidede Sokak No:9/A", "Alidede Sk."),
+    ("HASANPAŞA MAH. SÖĞÜTLÜÇEŞME CAD. NO:178/A", "Söğütlüçeşme Cd."),
+    ("", ""), ("sadece metin", ""), ("No:5", ""),
+])
+def test_street_of(address, expected):
+    assert hd.street_of(address) == expected
+
+
+def test_tr_title():
+    assert hd.tr_title("MİSAKI MİLLİ İNÖNÜ IŞIK") == "Misakı Milli İnönü Işık"
+
+
+@pytest.mark.parametrize("dlat,dlon,arrow", [
+    (0.01, 0, "↑"), (-0.01, 0, "↓"), (0, 0.01, "→"), (0, -0.01, "←"),
+    (0.007, 0.009, "↗"), (-0.007, -0.009, "↙"),
+])
+def test_distance_bearing_directions(dlat, dlon, arrow):
+    km, a = hd.distance_bearing(40.97016, 29.08219, 40.97016 + dlat, 29.08219 + dlon)
+    assert a == arrow and km > 0
+
+
+def test_distance_bearing_known():
+    # Çelebi Sk. -> Aile Eczanesi (Sahrayıcedit) ~1,2 km kuzey
+    km, a = hd.distance_bearing(40.97016, 29.08219, 40.981181, 29.084487)
+    assert 1.1 < km < 1.35 and a == "↑"
+
+
+@pytest.mark.parametrize("km,text", [(0.0001, "10 m"), (0.183, "180 m"), (0.996, "1000 m"), (1.0, "1,0 km"),
+                                     (1.234, "1,2 km"), (12.0, "12,0 km")])
+def test_fmt_distance(km, text):
+    assert hd.fmt_distance(km) == text
+
+
+def test_pharmacies_measured_from_home_not_weather_point(monkeypatch):
+    loc = dict(LOC, home_latitude=41.05, home_longitude=29.00)  # Moda tarafı
+    monkeypatch.setattr(hd.requests, "get", lambda *a, **k: _Resp(PHARM_HTML))
+    out = hd.fetch_pharmacies(loc, limit=3)
+    assert out[0]["semt"] == "Moda", "en yakın eczane ev konumuna göre seçilmeli"
+    assert out[0]["sokak"] == "" and out[1]["sokak"] in ("Ethem Efendi Cd.", "Atatürk Cd.")
+
+
+def test_config_has_celebi_home():
+    loc = hd.load_config()["location"]
+    assert loc["home_name"] == "Çelebi Sk."
+    assert hd.distance_bearing(loc["home_latitude"], loc["home_longitude"], 40.9736, 29.0770)[0] < 1

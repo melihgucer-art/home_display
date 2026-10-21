@@ -359,3 +359,48 @@ def test_layout_fits_vertically_in_worst_case(net, frozen, cfg, monkeypatch):
     footer = img.crop((0, H - 22, W, H))
     above = img.crop((0, H - 50, W, H - 24))
     assert text_of(footer) > 30 and text_of(above) > 30
+
+
+# ------------------------------------------------------------------ istenen gösterim değişiklikleri
+
+def _texts(monkeypatch, cfg):
+    drawn = []
+    real = hd.ImageDraw.ImageDraw.text
+
+    def spy(self, xy, text, *a, **k):
+        drawn.append((text, k.get("font").size if k.get("font") else None))
+        return real(self, xy, text, *a, **k)
+    monkeypatch.setattr(hd.ImageDraw.ImageDraw, "text", spy)
+    hd.render_report(cfg)
+    return drawn
+
+
+def test_dollar_and_euro_have_same_hierarchy(net, frozen, cfg, monkeypatch):
+    drawn = dict(_texts(monkeypatch, cfg))
+    assert drawn.get("Dolar") == drawn.get("Euro"), "etiketler aynı boyutta"
+    usd = next(s for t, s in _texts(monkeypatch, cfg) if t.startswith("49,60"))
+    eur = next(s for t, s in _texts(monkeypatch, cfg) if t.startswith("55,74"))
+    assert usd == eur, "değerler aynı boyutta"
+
+
+def test_seasonal_heading_text(net, frozen, cfg, monkeypatch):
+    assert any(t.startswith("Mevsiminde güzel!") for t, _ in _texts(monkeypatch, cfg))
+
+
+@pytest.mark.parametrize("day,expected", [
+    (21, "Çar: Organik Halk · Per: Erenköy"),            # çarşamba: yarın Erenköy, gün adıyla
+    (22, "Per: Erenköy · Cum: Kozyatağı, Salı"),          # perşembe: bugün Erenköy
+    (24, "Cmt: Sahrayıcedit · Paz: Koşuyolu · Per: Erenköy"),
+])
+def test_market_line_uses_day_names(net, cfg, monkeypatch, day, expected):
+    from conftest import freeze
+    freeze(monkeypatch, real_dt.datetime(2026, 10, day, 9, 7))
+    texts = [t for t, _ in _texts(monkeypatch, cfg)]
+    assert expected in texts, [t for t in texts if "Erenköy" in t]
+    assert not any("Yarın" in t for t in texts)
+
+
+def test_pharmacy_rows_reference_celebi(net, frozen, cfg, monkeypatch):
+    texts = [t for t, _ in _texts(monkeypatch, cfg)]
+    assert "Çelebi Sk.'tan" in texts
+    assert any(t.startswith("Şaşkınbakkal · ") and " m " in t and "0216 357 22 52" in t for t in texts)

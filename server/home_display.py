@@ -196,9 +196,45 @@ def fetch_next_holiday(today: dt.date) -> tuple[dt.date, str] | None:
     return None
 
 
+def tr_title(text: str) -> str:
+    """'MİSAKI MİLLİ CD.' -> 'Misakı Milli Cd.' (Türkçe i/ı kurallarıyla)."""
+    low = text.replace("I", "ı").replace("İ", "i").lower()
+    return " ".join(w[:1].replace("i", "İ").replace("ı", "I").upper() + w[1:] for w in low.split())
+
+
+def street_of(address: str) -> str:
+    """Adresten cadde/sokak adını çıkarır ve kısaltır: 'Sahrayıcedid Mah. Atatürk Cad. No:46/A' -> 'Atatürk Cd.'"""
+    a = re.sub(r"(?i)\bno\s*:.*$", "", address or "")
+    a = re.sub(r"(?i)^.*?\bmah(?:allesi|\.)\s*", "", a)
+    a = a.lstrip(" ,.").split(",")[0].strip(" .")
+    m = re.search(r"(?i)^(.*?\b(?:cad(?:desi)?|cd|sok(?:ağı|ak)?|sk|bulvarı|blv))\.?(?:\s|$)", a)
+    if not m:
+        return ""
+    street = tr_title(m.group(1))
+    street = re.sub(r"(?i)\s+(caddesi|cad|cd)$", " Cd.", street)
+    street = re.sub(r"(?i)\s+(sokağı|sokak|sok|sk)$", " Sk.", street)
+    street = re.sub(r"(?i)\s+(bulvarı|blv)$", " Bulv.", street)
+    return street
+
+
+ARROWS = ["↑", "↗", "→", "↘", "↓", "↙", "←", "↖"]  # kuzey yukarıda
+
+
+def distance_bearing(lat0: float, lon0: float, lat: float, lon: float) -> tuple[float, str]:
+    dy = (lat - lat0) * 111.0
+    dx = (lon - lon0) * 111.0 * math.cos(math.radians(lat0))
+    deg = math.degrees(math.atan2(dx, dy)) % 360
+    return math.hypot(dx, dy), ARROWS[int((deg + 22.5) % 360 // 45)]
+
+
+def fmt_distance(km: float) -> str:
+    return f"{max(10, round(km * 100) * 10)} m" if km < 1 else f"{fmt_tr(km, 1)} km"
+
+
 def fetch_pharmacies(loc: dict, limit: int = 2) -> list[dict]:
-    """Kadıköy nöbetçi eczaneleri (nobetcieczane.org), Erenköy'e uzaklığa göre sıralı."""
+    """Kadıköy nöbetçi eczaneleri (nobetcieczane.org), evin (Çelebi Sk.) yakınından uzağa sıralı."""
     import html as htmllib
+    home = (loc.get("home_latitude", loc["latitude"]), loc.get("home_longitude", loc["longitude"]))
     r = requests.get("https://nobetcieczane.org/istanbul/kadikoy", headers=UA, timeout=HTTP_TIMEOUT)
     r.raise_for_status()
     cards = re.findall(r"<div class=\"pharm\"[^>]*data-pharm-card(.*?)>", r.text, re.S)
@@ -210,17 +246,14 @@ def fetch_pharmacies(loc: dict, limit: int = 2) -> list[dict]:
         attrs = {k: htmllib.unescape(v) for k, v in re.findall(r'data-eczane-([a-z-]+)="([^"]*)"', card)}
         if attrs.get("nobetci") != "1":
             continue
+        km = arrow = None
         try:
-            lat, lon = float(attrs["lat"]), float(attrs["lon"])
+            km, arrow = distance_bearing(*home, float(attrs["lat"]), float(attrs["lon"]))
         except (KeyError, ValueError):
-            lat = lon = None
-        km = None
-        if lat is not None:
-            dy = (lat - loc["latitude"]) * 111.0
-            dx = (lon - loc["longitude"]) * 111.0 * math.cos(math.radians(loc["latitude"]))
-            km = math.hypot(dx, dy)
+            pass
         out.append({"ad": attrs.get("ad", ""), "semt": attrs.get("semt", ""),
-                    "tel": attrs.get("telefon", ""), "km": km,
+                    "tel": attrs.get("telefon", ""), "km": km, "yon": arrow,
+                    "sokak": street_of(attrs.get("adres", "")),
                     "baslangic": attrs.get("baslangic", "")})
     if not out:
         raise ValueError("nöbetçi işaretli eczane yok")
@@ -448,15 +481,15 @@ def render_report(cfg: dict) -> tuple[Image.Image, list[str]]:
     def draw_tiles(y: int) -> int:
         tiles: list[tuple[str, str, str]] = []
         if air:
-            sub = f"PM2.5 {round(air['pm2_5'])} µg/m³" if air["pm2_5"] is not None else ""
+            sub = f"PM2.5: {round(air['pm2_5'])}" if air["pm2_5"] is not None else ""
             tiles.append(("Hava kalitesi", aqi_label(air["aqi"]), sub))
         if sea is not None:
             tiles.append(("Deniz suyu", f"{round(sea)}°C", loc.get("sea_name", "")))
         if fin:
-            if "USD" in fin or "EUR" in fin:
-                main = f"$ {fmt_tr(fin['USD'])}" if "USD" in fin else f"€ {fmt_tr(fin['EUR'])}"
-                sub = f"€ {fmt_tr(fin['EUR'])}" if "USD" in fin and "EUR" in fin else ""
-                tiles.append(("Dolar / Euro" if sub else ("Dolar" if "USD" in fin else "Euro"), main, sub))
+            if "USD" in fin:
+                tiles.append(("Dolar", f"{fmt_tr(fin['USD'])} ₺", "USD"))
+            if "EUR" in fin:
+                tiles.append(("Euro", f"{fmt_tr(fin['EUR'])} ₺", "EUR"))
             if "ALTIN" in fin:
                 tiles.append(("Gram altın", f"{fmt_tr(fin['ALTIN'], 0)} ₺", "satış"))
         if not tiles:
@@ -481,7 +514,7 @@ def render_report(cfg: dict) -> tuple[Image.Image, list[str]]:
     d.text((M, y), tr_upper(AYLAR[today.month - 1]), font=font(30, True), fill=0)
     note = local_data.balik_notu(today)
     month_w = int(d.textlength(tr_upper(AYLAR[today.month - 1]), font=font(30, True)))
-    d.text((W - M, y + 10), ellipsize(d, "Mevsiminde" + (f" · {note}" if note else ""), font(18), CW - month_w - 16),
+    d.text((W - M, y + 10), ellipsize(d, "Mevsiminde güzel!" + (f" · {note}" if note else ""), font(18), CW - month_w - 16),
            font=font(18), fill=60, anchor="ra")
     y += 38
     d.line([M, y, W - M, y], fill=0, width=2)
@@ -518,25 +551,31 @@ def render_report(cfg: dict) -> tuple[Image.Image, list[str]]:
     d.line([M, y, W - M, y], fill=0, width=2)
     y += 8
     rows: list[tuple[str, str]] = []
-    bugun = [p.removesuffix(" Pazarı") for p in local_data.pazarlar(today)]
-    yarin = [p.removesuffix(" Pazarı") for p in local_data.pazarlar(today + dt.timedelta(days=1))]
+    # Pazarlar gün adıyla yazılır ("Per: Erenköy"): pano gece güncellenmediği için "yarın" yanıltabilir
     pazar = []
-    if bugun:
-        pazar.append("Bugün: " + ", ".join(bugun))
-    if yarin:
-        pazar.append("Yarın: " + ", ".join(yarin))
+    for offset in (0, 1):
+        day = today + dt.timedelta(days=offset)
+        names = [p.removesuffix(" Pazarı") for p in local_data.pazarlar(day)]
+        if names:
+            pazar.append(f"{GUN_KISA[day.weekday()]}: " + ", ".join(names))
     if not any("Erenköy" in p for p in pazar):
-        pazar.append(f"Erenköy {(3 - today.weekday()) % 7} gün sonra")
+        pazar.append("Per: Erenköy")
     rows.append(("Pazar", " · ".join(pazar)))
+    home_name = loc.get("home_name", "")
+    LABEL_W = 96
+    text_w = CW - LABEL_W
     for i, e in enumerate(pharmacies or []):
         name = re.sub(r"(?i)\s+eczanes[iİ]$", "", e["ad"]).strip() or "Eczane"
-        parts = [name + (f", {e['semt']}" if e["semt"] else "")]
-        if e["km"] is not None:
-            parts[0] += f" {fmt_tr(e['km'], 1)} km"
+        dist = f"{fmt_distance(e['km'])} {e['yon']}" if e["km"] is not None else ""
+        place = e.get("sokak") or e["semt"]
         tel = re.sub(r"^0\s*\((\d{3})\)\s*", r"0\1 ", e["tel"]).strip()
-        if tel:
-            parts.append(tel)
-        rows.append(("Eczane" if i == 0 else "", " · ".join(parts)))
+        # Sığmazsa önce sokak adından vazgeçilir; telefon ve uzaklık kalır
+        for parts in ([name, dist, place, tel], [name, dist, tel], [name, dist, place], [name, dist]):
+            text = " · ".join(p for p in parts if p)
+            if d.textlength(text, font=font(16)) <= text_w:
+                break
+        label = "Eczane" if i == 0 else (f"{home_name}'tan" if home_name and i == 1 else "")
+        rows.append((label, text))
     if holiday:
         hday, hname = holiday
         left = (hday - today).days
@@ -547,8 +586,14 @@ def render_report(cfg: dict) -> tuple[Image.Image, list[str]]:
     for label, text in rows:
         if y + 20 > bottom:
             break
-        d.text((M, y), label, font=font(16, True), fill=0)
-        d.text((M + 80, y), ellipsize(d, text, font(16), CW - 80), font=font(16), fill=0)
+        if label.endswith("'tan"):  # "Çelebi Sk.'tan": eczane uzaklıklarının referansı
+            size = 13
+            while size > 10 and d.textlength(label, font=font(size)) > LABEL_W - 4:
+                size -= 1
+            d.text((M, y + 2), ellipsize(d, label, font(size), LABEL_W - 4), font=font(size), fill=60)
+        else:
+            d.text((M, y), label, font=font(16, True), fill=0)
+        d.text((M + LABEL_W, y), ellipsize(d, text, font(16), CW - LABEL_W), font=font(16), fill=0)
         y += 22
 
     if errors:

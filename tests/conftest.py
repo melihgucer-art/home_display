@@ -39,12 +39,14 @@ PHARM_HTML = """
 <div class="pharm" role="button" tabindex="0"
      data-pharm-card
      data-eczane-ad="Şaşkınbakkal Eczanesi"
+     data-eczane-adres="Erenköy Mah. Ethem Efendi Cad. No:84/A"
      data-eczane-telefon="0 (216) 357 22 52"
      data-eczane-lat="40.9700" data-eczane-lon="29.0800"
      data-eczane-semt="Erenköy" data-eczane-nobetci="1">
 <div class="pharm" role="button" tabindex="0"
      data-pharm-card
      data-eczane-ad="Aile Eczanesi"
+     data-eczane-adres="Sahrayıcedid Mah. Atatürk Cad. No:46/A"
      data-eczane-telefon="0 (216) 759 55 31"
      data-eczane-lat="40.981181" data-eczane-lon="29.084487"
      data-eczane-semt="Sahrayıcedit" data-eczane-nobetci="1">

@@ -10,6 +10,10 @@ timezone = "Europe/Istanbul"
 name = "Erenköy · Kadıköy"
 latitude = 40.9736
 longitude = 29.0770
+# Nöbetçi eczanelerin uzaklık ve yönü bu noktaya göre gösterilir
+home_name = "Çelebi Sk."
+home_latitude = 40.97016
+home_longitude = 29.08219
 # Deniz suyu sıcaklığı için Caddebostan açığı
 sea_name = "Caddebostan"
 sea_latitude = 40.955
