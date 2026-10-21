@@ -1,0 +1,36 @@
+KINDLE 4 KURULUM PAKETİ (jailbreak yapıldıktan sonra)
+=====================================================
+
+Her adımda: Kindle'ı Mac'e tak -> dosyayı Kindle'a sürükle -> Finder'da Kindle'ın
+yanındaki ⏏ ile çıkar -> kabloyu çek -> Kindle'da işlemi yap.
+
+1) MKK
+   1-MKK klasöründeki .bin dosyasını Kindle'ın İÇİNE (en üst klasöre) sürükle.
+   Kindle'da: Menu -> Settings -> Menu -> Update Your Kindle -> onayla.
+   Kindle yeniden açılana kadar bekle.
+
+2) Sertifika güncellemesi (2025)
+   2-Sertifika klasöründeki .bin dosyasını Kindle'ın İÇİNE sürükle.
+   Kindle'da yine: Menu -> Settings -> Menu -> Update Your Kindle.
+
+3) KUAL
+   3-KUAL klasöründeki KUAL-KDK-1.0.azw2 dosyasını Kindle'daki "documents"
+   klasörüne sürükle. Kütüphanede "Kindle Launcher" olarak görünür.
+
+4) Home Display
+   4-HomeDisplay klasöründeki "extensions" klasörünü Kindle'ın İÇİNE sürükle
+   ("Birleştir / Merge" de).
+
+5) Güncelleme engeli (isteğe bağlı, önerilir)
+   5-Guncelleme-Engeli klasöründeki "update.bin.tmp.partial" klasörünü Kindle'ın
+   İÇİNE sürükle. Amazon'un otomatik güncellemesi jailbreak'i silmesin diye.
+
+Sonra Kindle'da Wi-Fi'ye bağlan, saatin doğru olduğunu kontrol et ve
+Kindle Launcher -> Home Display -> Tek seferlik yenile.
+
+Kaynaklar (hepsi ücretsiz, MobileRead topluluğu):
+- MKK ve KUAL: NiLuJe'nin anlık görüntüleri
+  https://www.mobileread.com/forums/showthread.php?t=225030
+- 2025 sertifika güncellemesi (DevCerts-20250419-KeyStore):
+  https://www.mobileread.com/forums/showpost.php?p=4506164&postcount=1295
+- xh: https://github.com/pascalw/kindle-dash
