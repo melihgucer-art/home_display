@@ -277,10 +277,10 @@ def ispanak(p: Pen):
 
 def kereviz(p: Pen):
     for x1 in (22, 50, 78):
-        p.line([(50, 58), (x1, 20)], width=8)
-        p.line([(50, 58), (x1, 20)], width=3, fill=LIGHT)
-        for dx in (-10, 0, 10):
-            p.leaf(x1, 22, x1 + dx, 4, bulge=0.45, fill=MID, vein=False)
+        p.line([(50, 58), (x1, 26)], width=8)
+        p.line([(50, 58), (x1, 26)], width=3, fill=LIGHT)
+        for dx in (-9, 0, 9):
+            p.leaf(x1, 28, x1 + dx, 10, bulge=0.45, fill=MID, vein=False)
     p.ellipse(24, 52, 76, 94, fill=LIGHT)
     for x in (38, 50, 62):
         p.line([(x, 92), (x + (x - 50) * 0.4, 99)], width=3)

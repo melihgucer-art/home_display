@@ -4,7 +4,6 @@
 [display]
 width = 600          # Kindle 4: 600x800
 height = 800
-rotate = 0           # 0 = dikey; 90 / 270 = yatay asarsanız
 timezone = "Europe/Istanbul"
 
 [location]

@@ -31,10 +31,15 @@ jobs:
           cache-dependency-path: server/requirements.txt
       - run: pip install -r server/requirements.txt
       - name: Görüntüyü üret
+        id: render
         run: |
           mkdir -p out
-          python3 server/home_display.py out/display.png
+          # 2 = hiçbir kaynağa ulaşılamadı: eski panoyu koru, işi hatasız bitir
+          code=0
+          python3 server/home_display.py out/display.png || code=$?
+          if [ "$code" = 2 ]; then echo "skip=1" >> "$GITHUB_OUTPUT"; elif [ "$code" != 0 ]; then exit "$code"; fi
       - name: display dalına yaz
+        if: steps.render.outputs.skip != '1'
         run: |
           cd out
           git init -q -b display

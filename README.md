@@ -120,6 +120,23 @@ ve normal haline döner.
 - **Altta "Alınamadı: …":** O veri kaynağı o an yanıt vermemiş demektir, pano yine çizilir.
   Ayrıntı için Actions → render → son çalıştırmanın loguna bakın.
 
+## Testler
+
+`python -m pytest` (gereksinimler: `server/requirements.txt`, `tests/requirements.txt`). Testler ağa çıkmaz,
+bütün kaynaklar sahte yanıtlarla denenir. Her push'ta GitHub Actions'ta da çalışır (**test** iş akışı).
+
+- **Kaynak hataları:** her kaynak için bağlantı hatası, zaman aşımı, HTTP 500/429, geçersiz JSON
+  (ör. Cloudflare sayfası), boş ya da `null` yanıt. Pano her durumda çizilir ve diğer kaynaklar etkilenmez.
+- **Hiçbir kaynağa ulaşılamazsa** yeni görüntü yayımlanmaz, Kindle son iyi panoyu göstermeye devam eder.
+- **Bozuk veri:** eksik alanlar, `null` değerler, kısa ya da uzun tahmin listeleri, bilinmeyen hava kodları, uç sıcaklık ve rüzgar değerleri.
+- **Uzun ve kısa metinler:** çok uzun ya da boş eczane, tatil, pazar, ürün ve konum adları.
+  Hiçbir metin ekran kenarına taşmaz.
+- **Tarihler:** her ay, haftanın her günü, yılbaşı, 29 Şubat, av yasağı sınırları, bilinen ay evreleri.
+- **İkonlar:** her ürünün kendi ikonu olduğu, ikonların kesilmediği, balık türlerinin birbirinden ayırt edildiği.
+- **Kindle betikleri:** sahte `eips`/`lipc`/`xh` ile dash ve busybox'ta. Kapsanan durumlar: indirme hatası
+  (eski görüntü korunur), boş dosya, değişmeyen görüntü (yeniden çizilmez), Wi-Fi yok, düşük pil, gece saatleri.
+- **İş akışları:** zamanlamanın Türkiye saatiyle günde 6 kez olduğu.
+
 ## Dosya yapısı
 
 ```
@@ -132,5 +149,7 @@ server/
 .github/workflows/
   render.yml           günde 6 kez panoyu üretip display dalına yazar
   kindle-package.yml   Kindle eklentisini xh ile paketleyip Releases'e koyar
+  test.yml             her push'ta testleri çalıştırır
 kindle/extensions/homedisplay/   KUAL eklentisi
+tests/                 test paketi
 ```

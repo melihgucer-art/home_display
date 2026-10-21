@@ -69,8 +69,71 @@ def fmt_tr(x: float, digits: int = 2) -> str:
 
 # ---------------------------------------------------------------- veri
 
+def num(v) -> float | None:
+    """API'den gelen değeri sayıya çevirir; null, boş, bool ya da bozuk değerler için None."""
+    if isinstance(v, bool) or v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v) if math.isfinite(v) else None
+    if isinstance(v, str):
+        try:
+            f = float(v.strip())
+        except ValueError:
+            return None
+        return f if math.isfinite(f) else None
+    return None
+
+
+def _col(daily: dict, key: str, i: int):
+    v = daily.get(key)
+    return v[i] if isinstance(v, list) and i < len(v) else None
+
+
+def _hhmm(v) -> str | None:
+    m = re.search(r"T(\d{2}:\d{2})", v) if isinstance(v, str) else None
+    return m.group(1) if m else None
+
+
+def parse_weather(raw: dict) -> dict:
+    """Open-Meteo yanıtını doğrulayıp sade bir yapıya çevirir. Anlık sıcaklık yoksa hata verir."""
+    cur = raw["current"]
+    temp = num(cur.get("temperature_2m"))
+    if temp is None:
+        raise ValueError("anlık sıcaklık yok")
+    code = num(cur.get("weather_code"))
+    current = {
+        "temp": temp,
+        "feels": num(cur.get("apparent_temperature")),
+        "humidity": num(cur.get("relative_humidity_2m")),
+        "code": int(code) if code is not None else None,
+        "wind": num(cur.get("wind_speed_10m")),
+        "wind_dir": num(cur.get("wind_direction_10m")),
+        "night": cur.get("is_day", 1) in (0, "0", False),
+    }
+    daily = raw.get("daily") if isinstance(raw.get("daily"), dict) else {}
+    times = daily.get("time") if isinstance(daily.get("time"), list) else []
+    days = []
+    for i, t in enumerate(times):
+        try:
+            day = dt.date.fromisoformat(t)
+        except (TypeError, ValueError):
+            continue
+        dcode = num(_col(daily, "weather_code", i))
+        days.append({
+            "date": day,
+            "code": int(dcode) if dcode is not None else None,
+            "tmax": num(_col(daily, "temperature_2m_max", i)),
+            "tmin": num(_col(daily, "temperature_2m_min", i)),
+            "rain": num(_col(daily, "precipitation_probability_max", i)),
+            "uv": num(_col(daily, "uv_index_max", i)),
+            "sunrise": _hhmm(_col(daily, "sunrise", i)),
+            "sunset": _hhmm(_col(daily, "sunset", i)),
+        })
+    return {"current": current, "days": days[:4]}
+
+
 def fetch_weather(loc: dict) -> dict:
-    return get_json(
+    return parse_weather(get_json(
         "https://api.open-meteo.com/v1/forecast",
         latitude=loc["latitude"], longitude=loc["longitude"],
         current="temperature_2m,apparent_temperature,relative_humidity_2m,"
@@ -78,24 +141,31 @@ def fetch_weather(loc: dict) -> dict:
         daily="weather_code,temperature_2m_max,temperature_2m_min,"
               "precipitation_probability_max,sunrise,sunset,uv_index_max",
         timezone="Europe/Istanbul", forecast_days=4,
-    )
+    ))
 
 
 def fetch_air(loc: dict) -> dict:
-    return get_json(
+    cur = get_json(
         "https://air-quality-api.open-meteo.com/v1/air-quality",
         latitude=loc["latitude"], longitude=loc["longitude"],
         current="european_aqi,pm2_5,pm10", timezone="Europe/Istanbul",
     )["current"]
+    aqi = num(cur.get("european_aqi"))
+    if aqi is None:
+        raise ValueError("hava kalitesi indeksi yok")
+    return {"aqi": aqi, "pm2_5": num(cur.get("pm2_5"))}
 
 
-def fetch_sea(loc: dict) -> float | None:
+def fetch_sea(loc: dict) -> float:
     cur = get_json(
         "https://marine-api.open-meteo.com/v1/marine",
         latitude=loc["sea_latitude"], longitude=loc["sea_longitude"],
         current="sea_surface_temperature",
     )["current"]
-    return cur.get("sea_surface_temperature")
+    t = num(cur.get("sea_surface_temperature"))
+    if t is None:
+        raise ValueError("deniz suyu sıcaklığı yok")
+    return t
 
 
 def fetch_finance() -> dict[str, float]:
@@ -106,15 +176,23 @@ def fetch_finance() -> dict[str, float]:
             out[label] = tr_number(d[key]["Satış"])
         except (KeyError, ValueError, TypeError):
             pass
+    if not out:
+        raise ValueError("kur/altın verisi yok")
     return out
 
 
 def fetch_next_holiday(today: dt.date) -> tuple[dt.date, str] | None:
-    for h in get_json("https://date.nager.at/api/v3/NextPublicHolidays/TR"):
-        day = dt.date.fromisoformat(h["date"])
+    holidays = get_json("https://date.nager.at/api/v3/NextPublicHolidays/TR")
+    if not isinstance(holidays, list):
+        raise ValueError("tatil listesi bekleniyordu")
+    for h in sorted(holidays, key=lambda h: str(h.get("date", ""))):
+        try:
+            day = dt.date.fromisoformat(h["date"])
+        except (KeyError, TypeError, ValueError):
+            continue
         if day >= today:
-            name = re.sub(r"\s*\(.*?\)", "", h["localName"])
-            return day, name
+            name = re.sub(r"\s*\(.*?\)", "", str(h.get("localName") or h.get("name") or "")).strip()
+            return day, name or "Resmi tatil"
     return None
 
 
@@ -123,8 +201,12 @@ def fetch_pharmacies(loc: dict, limit: int = 2) -> list[dict]:
     import html as htmllib
     r = requests.get("https://nobetcieczane.org/istanbul/kadikoy", headers=UA, timeout=HTTP_TIMEOUT)
     r.raise_for_status()
+    cards = re.findall(r"<div class=\"pharm\"[^>]*data-pharm-card(.*?)>", r.text, re.S)
+    if not cards:
+        # Kadıköy'de her gün nöbetçi eczane vardır; hiç kart yoksa sayfa yapısı değişmiştir
+        raise ValueError("eczane kartı bulunamadı (site tasarımı değişmiş olabilir)")
     out = []
-    for card in re.findall(r"<div class=\"pharm\"[^>]*data-pharm-card(.*?)>", r.text, re.S):
+    for card in cards:
         attrs = {k: htmllib.unescape(v) for k, v in re.findall(r'data-eczane-([a-z-]+)="([^"]*)"', card)}
         if attrs.get("nobetci") != "1":
             continue
@@ -140,6 +222,8 @@ def fetch_pharmacies(loc: dict, limit: int = 2) -> list[dict]:
         out.append({"ad": attrs.get("ad", ""), "semt": attrs.get("semt", ""),
                     "tel": attrs.get("telefon", ""), "km": km,
                     "baslangic": attrs.get("baslangic", "")})
+    if not out:
+        raise ValueError("nöbetçi işaretli eczane yok")
     out.sort(key=lambda e: e["km"] if e["km"] is not None else 99)
     return out[:limit]
 
@@ -257,24 +341,33 @@ def wind_dir(deg: float) -> str:
 
 # ---------------------------------------------------------------- pano
 
-def render(cfg: dict) -> Image.Image:
+def render_report(cfg: dict) -> tuple[Image.Image, list[str]]:
+    """Panoyu çizer; görüntüyü ve alınamayan kaynakların listesini döndürür.
+
+    Her veri kaynağı ve her bölüm ayrı korunur: biri bozulsa da pano çizilir,
+    sorunlu kaynağın adı en alttaki "Alınamadı" satırına yazılır.
+    """
     dcfg, loc = cfg["display"], cfg["location"]
     tz = ZoneInfo(dcfg.get("timezone", "Europe/Istanbul"))
     now = dt.datetime.now(tz)
     today = now.date()
-    W, H = dcfg["width"], dcfg["height"]
+    W, H = dcfg.get("width", 600), dcfg.get("height", 800)
     img = Image.new("L", (W, H), 255)
     d = ImageDraw.Draw(img)
     M = 20
     CW = W - 2 * M
     errors: list[str] = []
 
+    def fail(name: str, e: Exception) -> None:
+        if name not in errors:
+            errors.append(name)
+        print(f"[uyarı] {name}: {e!r}", file=sys.stderr)
+
     def safe(name, fn, *a):
         try:
             return fn(*a)
         except Exception as e:  # noqa: BLE001 - bir kaynak düşse de pano çizilsin
-            errors.append(name)
-            print(f"[uyarı] {name}: {e!r}", file=sys.stderr)
+            fail(name, e)
             return None
 
     tiles_cfg = cfg.get("tiles", {})
@@ -284,79 +377,112 @@ def render(cfg: dict) -> Image.Image:
     fin = safe("Piyasa", fetch_finance) if tiles_cfg.get("finance", True) else None
     holiday = safe("Tatil", fetch_next_holiday, today)
     pharmacies = safe("Eczane", fetch_pharmacies, loc) if tiles_cfg.get("pharmacy", True) else None
+    days = weather["days"] if weather else []
+
+    def deg(v) -> str:
+        return "–" if v is None else f"{round(v)}°"
 
     # --- başlık
     d.rectangle([0, 0, W, 82], fill=0)
     d.text((M, 8), GUNLER[now.weekday()], font=font(36, True), fill=255)
     d.text((M, 50), f"{now.day} {AYLAR[now.month - 1]} {now.year}", font=font(22), fill=255)
-    d.text((W - M, 10), loc.get("name", ""), font=font(20, True), fill=255, anchor="ra")
-    if weather:
-        daily = weather["daily"]
-        d.text((W - M, 38), f"Gün doğumu {daily['sunrise'][0][-5:]} · Batımı {daily['sunset'][0][-5:]}",
+    right_w = W - 2 * M - 230  # sol taraftaki gün adına çarpmasın
+    d.text((W - M, 10), ellipsize(d, loc.get("name", ""), font(20, True), right_w), font=font(20, True),
+           fill=255, anchor="ra")
+    if days and days[0]["sunrise"] and days[0]["sunset"]:
+        d.text((W - M, 38), f"Gün doğumu {days[0]['sunrise']} · Batımı {days[0]['sunset']}",
                font=font(16), fill=255, anchor="ra")
     d.text((W - M, 58), local_data.ay_evresi(today), font=font(16), fill=255, anchor="ra")
     y = 92
 
     # --- hava durumu
-    if weather:
-        cur, daily = weather["current"], weather["daily"]
-        weather_icon(d, cur["weather_code"], M, y, 92, night=not cur.get("is_day", 1))
-        d.text((M + 104, y - 6), f"{round(cur['temperature_2m'])}°", font=font(70, True), fill=0)
-        d.text((M + 108, y + 76), WMO.get(cur["weather_code"], ""), font=font(19), fill=0)
-        details = [
-            f"Hissedilen {round(cur['apparent_temperature'])}°",
-            f"Nem %{cur['relative_humidity_2m']}",
-            f"{wind_dir(cur['wind_direction_10m'])} {round(cur['wind_speed_10m'])} km/s",
-            f"UV {round(daily['uv_index_max'][0] or 0)}",
-        ]
+    def draw_weather(y: int) -> int:
+        cur = weather["current"]
+        weather_icon(d, cur["code"] if cur["code"] is not None else 3, M, y, 92, night=cur["night"])
+        d.text((M + 104, y - 6), deg(cur["temp"]), font=font(70, True), fill=0)
+        d.text((M + 108, y + 76), ellipsize(d, WMO.get(cur["code"], ""), font(19), 200), font=font(19), fill=0)
+        details = []
+        if cur["feels"] is not None:
+            details.append(f"Hissedilen {deg(cur['feels'])}")
+        if cur["humidity"] is not None:
+            details.append(f"Nem %{round(cur['humidity'])}")
+        if cur["wind"] is not None:
+            name = wind_dir(cur["wind_dir"]) + " " if cur["wind_dir"] is not None else "Rüzgar "
+            details.append(f"{name}{round(cur['wind'])} km/s")
+        if days and days[0]["uv"] is not None:
+            details.append(f"UV {round(days[0]['uv'])}")
         for i, line in enumerate(details):
             d.text((W - M, y + i * 24), line, font=font(18), fill=0, anchor="ra")
         y += 106
-        col = CW / 4
-        for i in range(4):
-            cx = M + col * i + col / 2
-            day = dt.date.fromisoformat(daily["time"][i])
-            d.text((cx, y), "Bugün" if i == 0 else GUNLER[day.weekday()], font=font(16, True), fill=0, anchor="ma")
-            weather_icon(d, daily["weather_code"][i], cx - 20, y + 20, 40)
-            d.text((cx, y + 64), f"{round(daily['temperature_2m_max'][i])}° / {round(daily['temperature_2m_min'][i])}°",
-                   font=font(16), fill=0, anchor="ma")
-            pp = daily["precipitation_probability_max"][i]
-            if pp is not None:
-                d.text((cx, y + 84), f"Yağış %{pp}", font=font(14), fill=70, anchor="ma")
-            if i:
-                d.line([M + col * i, y, M + col * i, y + 100], fill=170, width=1)
-        y += 108
+        if days:
+            col = CW / len(days)
+            for i, day in enumerate(days):
+                cx = M + col * i + col / 2
+                label = "Bugün" if day["date"] == today else GUNLER[day["date"].weekday()]
+                d.text((cx, y), label, font=font(16, True), fill=0, anchor="ma")
+                weather_icon(d, day["code"] if day["code"] is not None else 3, cx - 20, y + 20, 40)
+                d.text((cx, y + 64), f"{deg(day['tmax'])} / {deg(day['tmin'])}", font=font(16), fill=0, anchor="ma")
+                if day["rain"] is not None:
+                    d.text((cx, y + 84), f"Yağış %{round(day['rain'])}", font=font(14), fill=70, anchor="ma")
+                if i:
+                    d.line([M + col * i, y, M + col * i, y + 100], fill=170, width=1)
+            y += 108
+        return y
+
+    def guarded(name: str, fn, y: int, fallback_h: int) -> int:
+        """Bölümü çizer; çizim sırasında hata olursa bölümün alanını temizleyip devam eder."""
+        try:
+            return fn(y)
+        except Exception as e:  # noqa: BLE001
+            d.rectangle([0, y, W, y + fallback_h], fill=255)
+            fail(name, e)
+            return y + 10
+
+    if weather:
+        y = guarded("Hava", draw_weather, y, 214)
     else:
         d.text((M, y), "Hava durumu alınamadı", font=font(20), fill=60)
         y += 36
 
     # --- kutucuklar
-    tiles: list[tuple[str, str, str]] = []
-    if air:
-        tiles.append(("Hava kalitesi", aqi_label(air["european_aqi"]), f"PM2.5 {round(air['pm2_5'])} µg/m³"))
-    if sea is not None:
-        tiles.append(("Deniz suyu", f"{sea:.0f}°C", loc.get("sea_name", "")))
-    if fin:
-        if "USD" in fin and "EUR" in fin:
-            tiles.append(("Dolar / Euro", f"$ {fmt_tr(fin['USD'])}", f"€ {fmt_tr(fin['EUR'])}"))
-        if "ALTIN" in fin:
-            tiles.append(("Gram altın", f"{fmt_tr(fin['ALTIN'], 0)} ₺", "satış"))
-    if tiles:
+    def draw_tiles(y: int) -> int:
+        tiles: list[tuple[str, str, str]] = []
+        if air:
+            sub = f"PM2.5 {round(air['pm2_5'])} µg/m³" if air["pm2_5"] is not None else ""
+            tiles.append(("Hava kalitesi", aqi_label(air["aqi"]), sub))
+        if sea is not None:
+            tiles.append(("Deniz suyu", f"{round(sea)}°C", loc.get("sea_name", "")))
+        if fin:
+            if "USD" in fin or "EUR" in fin:
+                main = f"$ {fmt_tr(fin['USD'])}" if "USD" in fin else f"€ {fmt_tr(fin['EUR'])}"
+                sub = f"€ {fmt_tr(fin['EUR'])}" if "USD" in fin and "EUR" in fin else ""
+                tiles.append(("Dolar / Euro" if sub else ("Dolar" if "USD" in fin else "Euro"), main, sub))
+            if "ALTIN" in fin:
+                tiles.append(("Gram altın", f"{fmt_tr(fin['ALTIN'], 0)} ₺", "satış"))
+        if not tiles:
+            return y
         n = len(tiles)
         tw = (CW - (n - 1) * 8) / n
         for i, (label, value, sub) in enumerate(tiles):
             x0 = M + i * (tw + 8)
             d.rounded_rectangle([x0, y, x0 + tw, y + 66], radius=8, outline=0, width=2)
-            d.text((x0 + tw / 2, y + 5), label, font=font(14), fill=60, anchor="ma")
-            d.text((x0 + tw / 2, y + 22), ellipsize(d, value, font(22, True), int(tw - 8)),
-                   font=font(22, True), fill=0, anchor="ma")
+            d.text((x0 + tw / 2, y + 5), ellipsize(d, label, font(14), int(tw - 8)), font=font(14), fill=60, anchor="ma")
+            size = 22
+            while size > 14 and d.textlength(value, font=font(size, True)) > tw - 8:
+                size -= 1
+            d.text((x0 + tw / 2, y + 22 + (22 - size) // 2), ellipsize(d, value, font(size, True), int(tw - 8)),
+                   font=font(size, True), fill=0, anchor="ma")
             d.text((x0 + tw / 2, y + 48), ellipsize(d, sub, font(13), int(tw - 8)), font=font(13), fill=60, anchor="ma")
-        y += 76
+        return y + 76
+
+    y = guarded("Kutucuklar", draw_tiles, y, 70)
 
     # --- mevsiminde: ay adı + ikonlu ürün ızgarası
     d.text((M, y), tr_upper(AYLAR[today.month - 1]), font=font(30, True), fill=0)
     note = local_data.balik_notu(today)
-    d.text((W - M, y + 10), "Mevsiminde" + (f" · {note}" if note else ""), font=font(18), fill=60, anchor="ra")
+    month_w = int(d.textlength(tr_upper(AYLAR[today.month - 1]), font=font(30, True)))
+    d.text((W - M, y + 10), ellipsize(d, "Mevsiminde" + (f" · {note}" if note else ""), font(18), CW - month_w - 16),
+           font=font(18), fill=60, anchor="ra")
     y += 38
     d.line([M, y, W - M, y], fill=0, width=2)
     y += 6
@@ -366,20 +492,26 @@ def render(cfg: dict) -> Image.Image:
     icon_px = 50
     for label, kind, items in zip(("Meyve", "Sebze", "Balık"), ("meyve", "sebze", "balik"),
                                   local_data.MEVSIM[today.month]):
-        row_h = 86
         d.text((M, y + 32), label, font=font(16, True), fill=0)
-        for i, name in enumerate(items[:per_row]):
+        for i, name in enumerate([n for n in items if n][:per_row]):
             cx = M + label_w + cell * i + cell / 2
-            # balıklar yatay olduğu için daha geniş çizilip dikeyde ortalanır
-            px = 72 if kind == "balik" else icon_px
-            icon = icons.render_icon(name, kind, px)
-            if kind == "balik":
-                icon = icon.crop((0, (px - icon_px) // 2, px, (px - icon_px) // 2 + icon_px))
-            img.paste(icon, (int(cx - icon.width / 2), int(y + 2)))
-            lines = wrap(d, name, font(13), int(cell - 4))[:2]
+            try:
+                # balıklar yatay olduğu için daha geniş çizilip dikeyde ortalanır
+                px = 72 if kind == "balik" else icon_px
+                icon = icons.render_icon(name, kind, px)
+                if kind == "balik":
+                    icon = icon.crop((0, (px - icon_px) // 2, px, (px - icon_px) // 2 + icon_px))
+                img.paste(icon, (int(cx - icon.width / 2), int(y + 2)))
+            except Exception as e:  # noqa: BLE001
+                fail("İkon", e)
+            lines = wrap(d, name, font(13), int(cell - 4))
+            if len(lines) > 2:
+                lines = lines[:2]
+                lines[1] += "…"
             for j, line in enumerate(lines):
-                d.text((cx, y + icon_px + 6 + j * 15), line, font=font(13), fill=0, anchor="ma")
-        y += row_h
+                d.text((cx, y + icon_px + 6 + j * 15), ellipsize(d, line, font(13), int(cell - 4)),
+                       font=font(13), fill=0, anchor="ma")
+        y += 86
     y += 2
 
     # --- semt
@@ -396,12 +528,15 @@ def render(cfg: dict) -> Image.Image:
     if not any("Erenköy" in p for p in pazar):
         pazar.append(f"Erenköy {(3 - today.weekday()) % 7} gün sonra")
     rows.append(("Pazar", " · ".join(pazar)))
-    if pharmacies:
-        for i, e in enumerate(pharmacies):
-            name = re.sub(r"(?i)\s+eczanes[iİ]$", "", e["ad"]).strip()
-            dist = f" {fmt_tr(e['km'], 1)} km" if e["km"] is not None else ""
-            tel = re.sub(r"^0\s*\((\d{3})\)\s*", r"0\1 ", e["tel"])
-            rows.append(("Eczane" if i == 0 else "", f"{name}, {e['semt']}{dist} · {tel}"))
+    for i, e in enumerate(pharmacies or []):
+        name = re.sub(r"(?i)\s+eczanes[iİ]$", "", e["ad"]).strip() or "Eczane"
+        parts = [name + (f", {e['semt']}" if e["semt"] else "")]
+        if e["km"] is not None:
+            parts[0] += f" {fmt_tr(e['km'], 1)} km"
+        tel = re.sub(r"^0\s*\((\d{3})\)\s*", r"0\1 ", e["tel"]).strip()
+        if tel:
+            parts.append(tel)
+        rows.append(("Eczane" if i == 0 else "", " · ".join(parts)))
     if holiday:
         hday, hname = holiday
         left = (hday - today).days
@@ -417,12 +552,14 @@ def render(cfg: dict) -> Image.Image:
         y += 22
 
     if errors:
+        d.rectangle([0, H - 22, W, H], fill=255)
         d.text((M, H - 20), ellipsize(d, "Alınamadı: " + ", ".join(errors), font(13), CW), font=font(13), fill=80)
 
-    rot = dcfg.get("rotate", 0)
-    if rot:
-        img = img.rotate(-rot, expand=True)
-    return img.quantize(16, dither=Image.Dither.NONE).convert("L")
+    return img.quantize(16, dither=Image.Dither.NONE).convert("L"), errors
+
+
+def render(cfg: dict) -> Image.Image:
+    return render_report(cfg)[0]
 
 
 def to_png(img: Image.Image) -> bytes:
@@ -431,10 +568,25 @@ def to_png(img: Image.Image) -> bytes:
     return buf.getvalue()
 
 
+def attempted_sources(cfg: dict) -> set[str]:
+    tiles = cfg.get("tiles", {})
+    names = {"Hava", "Tatil"}
+    for key, name in (("air", "Hava kalitesi"), ("sea", "Deniz"), ("finance", "Piyasa"), ("pharmacy", "Eczane")):
+        if tiles.get(key, True):
+            names.add(name)
+    return names
+
+
 def main(argv: list[str]) -> int:
     out = Path(argv[1] if len(argv) > 1 else "display.png")
-    out.write_bytes(to_png(render(load_config())))
-    print(f"yazıldı: {out}")
+    cfg = load_config()
+    img, errors = render_report(cfg)
+    if attempted_sources(cfg) <= set(errors):
+        # Hiçbir kaynağa ulaşılamadı (büyük olasılıkla ağ sorunu): eski, dolu panoyu ezme.
+        print("Hiçbir veri kaynağına ulaşılamadı; görüntü yayımlanmıyor.", file=sys.stderr)
+        return 2
+    out.write_bytes(to_png(img))
+    print(f"yazıldı: {out}" + (f" (alınamadı: {', '.join(errors)})" if errors else ""))
     return 0
 
 

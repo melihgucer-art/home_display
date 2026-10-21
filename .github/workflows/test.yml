@@ -1,0 +1,22 @@
+# Her push'ta testleri çalıştırır (ağsız, tamamen sahte verilerle). Kindle betikleri busybox ile de denenir.
+name: test
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            server/requirements.txt
+            tests/requirements.txt
+      - run: sudo apt-get install -y -qq busybox >/dev/null
+      - run: pip install -r server/requirements.txt -r tests/requirements.txt
+      - run: python -m pytest -q
