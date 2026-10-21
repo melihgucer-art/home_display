@@ -5,15 +5,17 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
+    timeout-minutes: 4
     steps:
       - name: sources
+        timeout-minutes: 3
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set +e
           UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36'
           echo "=== kindle-dash scripts"
-          gh release download -R pascalw/kindle-dash -p '*.tgz' -D kd && mkdir x && tar xzf kd/*.tgz -C x
+          timeout 60 gh release download -R pascalw/kindle-dash -p '*.tgz' -D kd && mkdir x && tar xzf kd/*.tgz -C x
           for f in dash.sh start.sh stop.sh wait-for-wifi.sh local/fetch-dashboard.sh local/env.sh local/low-battery.sh; do echo "##### $f"; cat "x/$f"; done
           file x/xh x/next-wakeup; ls -la x
           echo "=== truncgil keys"; curl -s -m 20 https://finans.truncgil.com/today.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(list(d)); print(d.get('gram-altin'))"
@@ -25,7 +27,7 @@ jobs:
           for u in https://iski.istanbul/api/iski/baraj/doluluk https://iski.istanbul/web/api/baraj https://iski.istanbul/api/baraj-doluluk; do echo "$u $(curl -s -m 20 -o /dev/null -w '%{http_code}' -A "$UA" $u)"; done
           echo "=== IEO"
           curl -s -m 20 -A "$UA" https://www.istanbuleczaciodasi.org.tr/nobetci-eczane/ -o ieo.html; ls -la ieo.html
-          grep -oiE '(ajax|url|action|\$\.post|\$\.get|fetch)[^;]{0,200}' ieo.html | head -30
+          python3 -c "import re; s=open('ieo.html',errors='replace').read(); [print(m[:250]) for m in re.findall(r'(?i)(?:ajax|\$\.post|\$\.get|fetch\(|action=)[^;]{0,250}', s)[:30]]"
           grep -oE 'src="[^"]+\.js[^"]*"' ieo.html | head
           python3 -c "s=open('ieo.html',errors='replace').read(); i=s.find('Kadıköy'); print(s[max(0,i-1500):i+800])"
           echo "=== nobetcieczane.org"
