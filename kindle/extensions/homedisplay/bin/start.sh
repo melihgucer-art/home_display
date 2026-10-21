@@ -3,7 +3,7 @@
 if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
     exit 0
 fi
-: > "$LOG"
+log "başlatılıyor (saat: $(date))"
 lipc-set-prop com.lab126.powerd preventScreenSaver 1 2>/dev/null
 # Kindle arayüzünü durdur ki ekranın üstüne çizmesin
 /etc/init.d/framework stop >/dev/null 2>&1

@@ -1,11 +1,21 @@
 #!/bin/sh
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 . "$DIR/config.sh"
+# KUAL betikleri kısıtlı bir PATH ile çalıştırabiliyor; eips /usr/sbin altında
+PATH="$PATH:/usr/sbin:/usr/bin:/sbin:/bin"
+export PATH
 PIDFILE=/tmp/homedisplay.pid
 IMG=/tmp/homedisplay.png
-LOG=/tmp/homedisplay.log
+# Log USB belleğe yazılır: Mac'ten Kindle/extensions/homedisplay/homedisplay.log olarak okunabilir
+LOG="$DIR/homedisplay.log"
 
-log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
+log() {
+    # 100 KB'ı geçerse son kısmı tut
+    if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 102400 ]; then
+        tail -n 200 "$LOG" > "$LOG.old" && mv "$LOG.old" "$LOG"
+    fi
+    echo "$(date '+%F %T') $*" >> "$LOG"
+}
 
 wifi_on() {
     lipc-set-prop com.lab126.cmd wirelessEnable 1 2>/dev/null
@@ -25,8 +35,10 @@ download() {
     case "$url" in
         https://*)
             if [ -x "$DIR/bin/xh" ]; then
-                "$DIR/bin/xh" -d -q -o "$out" get "$url"
-                return $?
+                "$DIR/bin/xh" -d -q -o "$out" get "$url" 2>> "$LOG"
+                rc=$?
+                [ $rc -ne 0 ] && log "xh hata kodu $rc (saat yanlışsa HTTPS kurulamaz: $(date))"
+                return $rc
             fi
             log "UYARI: bin/xh yok, HTTPS büyük olasılıkla başarısız olacak"
             ;;
@@ -39,6 +51,7 @@ battery() { lipc-get-prop com.lab126.powerd battLevel 2>/dev/null || gasgauge-in
 # $1 = 1 ise tam yenileme
 refresh() {
     full="$1"
+    command -v eips >/dev/null 2>&1 || log "UYARI: eips bulunamadı (PATH=$PATH)"
     if ! wifi_on; then
         log "wifi bağlanamadı"
         eips 1 38 "Wi-Fi yok" >/dev/null 2>&1
@@ -55,11 +68,11 @@ refresh() {
         mv "$IMG.tmp" "$IMG"
         if [ "$full" = 1 ]; then
             eips -c >/dev/null 2>&1
-            eips -f -g "$IMG" >/dev/null 2>&1
+            eips -f -g "$IMG" >> "$LOG" 2>&1
         else
-            eips -g "$IMG" >/dev/null 2>&1
+            eips -g "$IMG" >> "$LOG" 2>&1
         fi
-        log "görüntü güncellendi"
+        log "görüntü güncellendi ($(wc -c < "$IMG") bayt)"
     else
         rm -f "$IMG.tmp"
         log "indirme başarısız: $IMAGE_URL"

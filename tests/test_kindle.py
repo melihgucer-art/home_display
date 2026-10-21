@@ -130,7 +130,7 @@ def test_unchanged_image_is_not_redrawn(kindle):
     kindle.reset_log()
     kindle.run("refresh 0")
     assert not any("-g" in l for l in kindle.eips()), "aynı görüntü yeniden çizilmemeli"
-    assert "değişmemiş" in (kindle.tmpdir / "homedisplay.log").read_text()
+    assert "değişmemiş" in (kindle.ext / "homedisplay.log").read_text()
 
 
 def test_changed_image_partial_refresh(kindle):
@@ -215,7 +215,7 @@ def test_http_uses_wget(kindle):
 def test_https_without_xh_warns_and_falls_back(kindle):
     (kindle.ext / "bin" / "xh").unlink()
     kindle.run("refresh 1")
-    assert "bin/xh yok" in (kindle.tmpdir / "homedisplay.log").read_text()
+    assert "bin/xh yok" in (kindle.ext / "homedisplay.log").read_text()
     assert any(l.startswith("wget") for l in kindle.log())
 
 
@@ -242,7 +242,7 @@ for i in 1 2 3 4 5 6 7; do
     echo "tur$i full=$full" >> "$LOG"
     n=$((n + 1))
 done''')
-    text = (kindle.tmpdir / "homedisplay.log").read_text()
+    text = (kindle.ext / "homedisplay.log").read_text()
     fulls = [l.split()[0] for l in text.splitlines() if "full=1" in l]
     assert fulls == ["tur1", "tur4", "tur7"]
 
@@ -351,3 +351,36 @@ def test_amazon_block_remounts_root(kindle):
     _run_hosts(kindle, "amazon-block.sh", hosts)
     mounts = [l for l in kindle.log() if l.startswith("mntroot")]
     assert mounts == ["mntroot rw", "mntroot ro"]
+
+
+def test_eips_found_even_with_minimal_path(kindle, tmp_path):
+    """KUAL kısıtlı PATH verse de /usr/sbin eklenmeli (eips orada)."""
+    r = kindle.run('echo "$PATH"')
+    assert ":/usr/sbin" in r.stdout
+
+
+def test_log_is_on_usb_storage_and_records_failures(kindle):
+    (kindle.state / "fail").touch()
+    kindle.run("refresh 1")
+    log = (kindle.ext / "homedisplay.log").read_text()
+    assert "xh hata kodu" in log and "indirme başarısız" in log
+
+
+def test_log_is_trimmed(kindle):
+    (kindle.ext / "homedisplay.log").write_text("x" * 200 + "\n" * 0 + ("satır\n" * 30000))
+    kindle.run('log "son satır"')
+    text = (kindle.ext / "homedisplay.log").read_text()
+    assert len(text) < 102400 and text.rstrip().endswith("son satır")
+
+
+def test_once_draws_in_background_after_delay(kindle):
+    once = (kindle.ext / "bin" / "once.sh").read_text()
+    assert "sleep 4; refresh 1" in once and once.rstrip().endswith("&")
+
+
+def test_menu_closes_kual_for_drawing_actions():
+    import json
+    items = json.loads((EXT / "menu.json").read_text())["items"][0]["items"]
+    by_action = {i["action"]: i for i in items}
+    assert by_action["bin/once.sh"].get("exitmenu") is True
+    assert by_action["bin/start.sh"].get("exitmenu") is True

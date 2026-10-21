@@ -7,7 +7,8 @@
         {
           "name": "Başlat",
           "priority": 1,
-          "action": "bin/start.sh"
+          "action": "bin/start.sh",
+          "exitmenu": true
         },
         {
           "name": "Durdur",
@@ -17,12 +18,14 @@
         {
           "name": "Tek seferlik yenile",
           "priority": 3,
-          "action": "bin/once.sh"
+          "action": "bin/once.sh",
+          "exitmenu": true
         },
         {
           "name": "Amazon'u engelle (Wi-Fi'den önce)",
           "priority": 4,
-          "action": "bin/amazon-block.sh"
+          "action": "bin/amazon-block.sh",
+          "exitmenu": true
         },
         {
           "name": "Amazon engelini kaldır",
