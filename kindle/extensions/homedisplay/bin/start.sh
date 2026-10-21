@@ -9,4 +9,7 @@ fi
 log "başlatılıyor (saat: $(date))"
 bg "$DIR/bin/keywatch.sh"
 bg "$DIR/bin/loop.sh" --takeover
+# Arka plan süreçleri kendilerini ayırana kadar bekle; KUAL betik bitince süreç grubunu kapatabilir
+sleep 3
+log "arka plan süreçleri başlatıldı"
 exit 0

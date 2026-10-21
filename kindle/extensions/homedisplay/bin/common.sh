@@ -4,19 +4,28 @@ DIR="$(cd "$(dirname "$0")/.." && pwd)"
 # KUAL betikleri kısıtlı bir PATH ile çalıştırabiliyor; eips /usr/sbin altında
 PATH="$PATH:/usr/sbin:/usr/bin:/sbin:/bin"
 export PATH
+# Kindle saati UTC tutar; gece saatleri ve log için Türkiye saati (UTC+3, yaz saati yok)
+TZ="${TZ:-TRT-3}"
+export TZ
+
+# Kindle 4'ün eski busybox kabuğu "command -v"yi desteklemeyebilir
+have() {
+    command -v "$1" >/dev/null 2>&1 || which "$1" >/dev/null 2>&1 || type "$1" >/dev/null 2>&1
+}
 PIDFILE=/tmp/homedisplay.pid
 IMG=/tmp/homedisplay.png
 # Log USB belleğe yazılır: Mac'ten Kindle/extensions/homedisplay/homedisplay.log olarak okunabilir
 LOG="$DIR/homedisplay.log"
 
 # Arka planda, oturumdan bağımsız çalıştır (Kindle'da nohup her zaman bulunmayabilir)
+# İç içe alt kabuk: süreç hemen init'e devredilir, KUAL betiği bitirip süreç grubunu kapatsa da yaşar.
 bg() {
-    if command -v setsid >/dev/null 2>&1; then
-        setsid "$@" >> "$LOG" 2>&1 < /dev/null &
-    elif command -v nohup >/dev/null 2>&1; then
-        nohup "$@" >> "$LOG" 2>&1 < /dev/null &
+    if have setsid; then
+        ( setsid "$@" >> "$LOG" 2>&1 < /dev/null & ) &
+    elif have nohup; then
+        ( nohup "$@" >> "$LOG" 2>&1 < /dev/null & ) &
     else
-        "$@" >> "$LOG" 2>&1 < /dev/null &
+        ( "$@" >> "$LOG" 2>&1 < /dev/null & ) &
     fi
 }
 
@@ -62,7 +71,7 @@ battery() { lipc-get-prop com.lab126.powerd battLevel 2>/dev/null || gasgauge-in
 # $1 = 1 ise tam yenileme
 refresh() {
     full="$1"
-    command -v eips >/dev/null 2>&1 || log "UYARI: eips bulunamadı (PATH=$PATH)"
+    have eips || log "UYARI: eips bulunamadı (PATH=$PATH)"
     if ! wifi_on; then
         log "wifi bağlanamadı"
         eips 1 38 "Wi-Fi yok" >/dev/null 2>&1
@@ -83,7 +92,7 @@ refresh() {
         else
             eips -g "$IMG" >> "$LOG" 2>&1
         fi
-        log "görüntü güncellendi ($(wc -c < "$IMG") bayt)"
+        log "görüntü güncellendi ($(wc -c < "$IMG") bayt, eips çıkış kodu $?)"
     else
         rm -f "$IMG.tmp"
         log "indirme başarısız: $IMAGE_URL"

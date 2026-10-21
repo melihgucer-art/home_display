@@ -4,7 +4,7 @@
 . "$(dirname "$0")/common.sh"
 echo $$ > /tmp/homedisplay-key.pid
 trap '' HUP
-if ! command -v waitforkey >/dev/null 2>&1; then
+if ! have waitforkey; then
     log "UYARI: waitforkey yok; Home tuşuyla çıkılamaz (güç düğmesini 30 sn basılı tutun)"
     exit 0
 fi

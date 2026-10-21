@@ -376,7 +376,9 @@ def test_log_is_trimmed(kindle):
 
 def test_once_draws_in_background_after_delay(kindle):
     once = (kindle.ext / "bin" / "once.sh").read_text()
-    assert "sleep 4; refresh 1" in once and once.rstrip().endswith("&")
+    loop = (kindle.ext / "bin" / "loop.sh").read_text()
+    assert 'bg "$DIR/bin/loop.sh" --once' in once
+    assert "sleep 10" in loop.split('"--once"')[1].split("fi")[0], "kütüphane çizildikten sonra çizmeli"
 
 
 def test_menu_closes_kual_for_drawing_actions():
@@ -428,3 +430,39 @@ def test_stop_called_from_keywatch_does_not_kill_itself(kindle):
     assert r.returncode == 0, (r.returncode, r.stderr)
     assert any("preventScreenSaver 0" in l for l in kindle.log()), "stop.sh sonuna kadar çalışmalı"
     assert "durduruldu" in (kindle.ext / "homedisplay.log").read_text()
+
+
+def test_have_works_without_command_v(kindle):
+    """Kindle 4'ün eski busybox'ı 'command -v'yi desteklemeyebilir; yedek yollar devreye girmeli."""
+    r = kindle.run('command() { return 1; }\nif have eips; then echo VAR; else echo YOK; fi\n'
+                   'if have olmayan_komut_xyz; then echo VAR; else echo YOK; fi')
+    assert r.stdout.split() == ["VAR", "YOK"]
+
+
+def test_once_mode_draws_and_leaves_no_pidfile(kindle):
+    env = {"PATH": f"{kindle.stub}:{os.environ['PATH']}"}
+    r = subprocess.run(kindle.shell + [str(kindle.ext / "bin" / "loop.sh"), "--once"], capture_output=True,
+                       text=True, env=env, timeout=30)
+    assert r.returncode == 0, r.stderr
+    assert any(l.startswith("eips -f -g") for l in kindle.log())
+    assert not (kindle.tmpdir / "homedisplay.pid").exists(), "tek seferlik mod 'çalışıyor' izlenimi vermemeli"
+
+
+def test_amazon_block_reports_failure_when_hosts_not_writable(kindle):
+    hosts = kindle.tmpdir / "ro" / "hosts"
+    hosts.parent.mkdir()
+    hosts.write_text(ORIGINAL_HOSTS)
+    hosts.chmod(0o444)
+    try:
+        r = _run_hosts(kindle, "amazon-block.sh", hosts)
+        if os.access(hosts, os.W_OK):  # root olarak çalışıyorsak salt-okunur taklit edilemez
+            pytest.skip("root kullanıcısıyla salt-okunur dosya taklit edilemiyor")
+        assert r.returncode == 1
+        assert any("engellenemedi" in l for l in kindle.eips())
+    finally:
+        hosts.chmod(0o644)
+
+
+def test_timezone_is_turkey(kindle):
+    r = kindle.run('echo "$TZ"')
+    assert r.stdout.strip() == "TRT-3"

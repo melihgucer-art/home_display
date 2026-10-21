@@ -1,7 +1,12 @@
 #!/bin/sh
 . "$(dirname "$0")/common.sh"
-echo $$ > "$PIDFILE"
 trap '' HUP  # KUAL/arayüz kapanınca gelen kapanma sinyalini yok say
+if [ "$1" = "--once" ]; then
+    sleep 10  # kütüphane ekranı çizilsin, sonra üstüne çiz
+    refresh 1
+    exit 0
+fi
+echo $$ > "$PIDFILE"
 log "döngü başladı (pid $$)"
 if [ "$1" = "--takeover" ]; then
     sleep 3  # KUAL menüsünün kapanmasını bekle

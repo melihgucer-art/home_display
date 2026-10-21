@@ -3,9 +3,10 @@
 # Amazon KUAL'ın geliştirici sertifikasını siliyor; bu engel bunu önler.
 # Saat eşitleme sunucuları (kindle-time, ntp) bilerek engellenmez: pano için saatin doğru olması şart.
 HOSTS="${HOSTS:-/etc/hosts}"
+PATH="$PATH:/usr/sbin:/usr/bin"
 MARK="# BEGIN homedisplay_block_amazon"
 grep -q "$MARK" "$HOSTS" 2>/dev/null && { eips 1 38 "Amazon zaten engelli" >/dev/null 2>&1; exit 0; }
-command -v mntroot >/dev/null 2>&1 && mntroot rw
+mntroot rw >/dev/null 2>&1
 cat >> "$HOSTS" <<'HOSTS_EOF'
 # BEGIN homedisplay_block_amazon
 127.0.0.1 amazon.com
@@ -25,6 +26,12 @@ cat >> "$HOSTS" <<'HOSTS_EOF'
 127.0.0.1 w.amazon.com
 # END homedisplay_block_amazon
 HOSTS_EOF
-command -v mntroot >/dev/null 2>&1 && mntroot ro
-eips 1 38 "Amazon engellendi" >/dev/null 2>&1
+mntroot ro >/dev/null 2>&1
+PATH="$PATH:/usr/sbin:/usr/bin"
+if grep -q "$MARK" "$HOSTS" 2>/dev/null; then
+    eips 1 38 "Amazon engellendi" >/dev/null 2>&1
+else
+    eips 1 38 "HATA: Amazon engellenemedi" >/dev/null 2>&1
+    exit 1
+fi
 exit 0
