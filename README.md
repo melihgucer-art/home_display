@@ -1,15 +1,18 @@
 # Home Display — Kindle 4 (firmware 4.1.1) · Erenköy / Kadıköy
 
 Kindle 4'ü (klavyesiz "Kindle 4 NT") duvara asılabilir bir ev panosuna çevirir.
-**Sıfır maliyetlidir:** sunucu, abonelik ya da API anahtarı gerekmez.
+**Tamamen ücretsizdir:** Raspberry Pi, sunucu, abonelik ya da API anahtarı gerekmez.
 
 ```
- GitHub Actions (ücretsiz)            GitHub (ücretsiz barındırma)          Kindle 4
- her 30 dk: verileri topla,   ──▶   "display" dalı: display.png   ──▶   15 dk'da bir indir,
+ GitHub Actions (ücretsiz)              GitHub (ücretsiz barındırma)        Kindle 4
+ günde 6 kez: verileri topla,   ──▶   "display" dalı: display.png  ──▶   saatte bir kontrol et,
  600×800 PNG çiz                                                          değiştiyse ekrana bas
 ```
 
-Görüntüyü GitHub Actions üretir. Herkese açık depolarda Actions dakikaları sınırsız ve ücretsizdir.
+Görüntüyü GitHub Actions üretir; herkese açık depolarda Actions sınırsız ve ücretsizdir.
+Güncelleme saatleri (Türkiye saati): **06:07, 09:07, 12:07, 15:07, 18:07, 21:07**.
+GitHub yoğun saatlerde birkaç dakika geciktirebilir.
+
 Kindle PNG'yi `raw.githubusercontent.com` adresinden indirir. Kindle 4'ün kendi `wget`'i
 modern HTTPS'e bağlanamaz; bu yüzden pakete [kindle-dash](https://github.com/pascalw/kindle-dash)
 projesinin K4 için derlenmiş `xh` istemcisi eklenmiştir.
@@ -22,44 +25,41 @@ projesinin K4 için derlenmiş `xh` istemcisi eklenmiştir.
 |---|---|---|
 | Başlık | Gün, tarih, gün doğumu/batımı, ay evresi | Open-Meteo + yerel hesap |
 | Hava | Erenköy'de anlık durum, hissedilen, nem, rüzgar (poyraz/lodos…), UV, 4 günlük tahmin | [Open-Meteo](https://open-meteo.com) |
-| Kutucuklar | Hava kalitesi (PM2.5), Caddebostan açığında deniz suyu sıcaklığı, dolar/euro, gram altın | Open-Meteo Air Quality + Marine, [truncgil finans](https://finans.truncgil.com) |
-| Mevsiminde | O ayın meyveleri, sebzeleri, İstanbul balıkları; av yasağı (15 Nisan – 31 Ağustos) uyarısı | `server/local_data.py` |
-| Semt | Bugün/yarın kurulan pazarlar (Erenköy Pazarı Perşembe, Göztepe Pazartesi, Organik Halk Pazarı Çarşamba…), sıradaki resmi tatil, takvim, yapılacaklar | Kadıköy Belediyesi listesi, [Nager.Date](https://date.nager.at) |
+| Kutucuklar | Hava kalitesi, Caddebostan açığında deniz suyu, dolar/euro, gram altın | Open-Meteo, [truncgil finans](https://finans.truncgil.com) |
+| **Mevsiminde** | Büyük harflerle ay adı; altında o ayın 6 meyvesi, 6 sebzesi ve 6 İstanbul balığı, her biri **ikonuyla** ve adıyla. Av yasağı (15 Nisan – 31 Ağustos) geri sayımı | `server/local_data.py`, `server/icons.py` |
+| Semt | Bugün/yarın kurulan pazarlar (Erenköy Pazarı Perşembe…), Erenköy'e en yakın 2 nöbetçi eczane, sıradaki resmi tatil | Kadıköy Belediyesi listesi, nobetcieczane.org, [Nager.Date](https://date.nager.at) |
 
-İstenmediği için deprem ve ezan vakti bilgisi **yoktur**.
+Saat, yapılacaklar, takvim, deprem ve ezan bilgisi **yoktur**.
+
+### İkonlar
+
+Meyve ve sebzelerin bir kısmı Google'ın açık lisanslı (OFL) tek renkli
+[Noto Emoji](https://fonts.google.com/noto/specimen/Noto+Emoji) fontundan çizilir.
+Fontta karşılığı olmayanlar (nar, ayva, incir, dut, pırasa, enginar, bamya, kereviz…) ve
+**her balık türü** (hamsi, lüfer, palamut, kalkan, barbunya…) `server/icons.py` içinde aynı
+çizgi stilinde ayrı ayrı çizilmiştir. Hepsi e-ink'te net görünecek şekilde siyah çizgi ve gri dolgudur.
 
 ---
 
-## 1. Bulut tarafı (bir kez, 2 dakika)
-
-Depo hazır. Yapmanız gereken tek şey Actions'ın çalıştığını doğrulamak:
+## 1. Bulut tarafı (bir kez)
 
 1. GitHub'da depo → **Actions** sekmesi. "I understand my workflows, go ahead and enable them" çıkarsa onaylayın.
-2. **render** iş akışı → **Run workflow**. Bir dakika içinde `display` dalı oluşur.
-3. Tarayıcıda şu adresi açın, panoyu görmelisiniz:
+2. **render** iş akışı → **Run workflow**. Bir dakika içinde `display` dalı güncellenir.
+3. Tarayıcıda açıp panoyu görün:
    `https://raw.githubusercontent.com/melihgucer-art/home_display/display/display.png`
 
-Bundan sonra görüntü her saat :07 ve :37'de kendiliğinden yenilenir. GitHub zamanlanmış işleri
-yoğunlukta 5–15 dk geciktirebilir. Saat bu yüzden görüntüye konmadı; altta "Güncellendi" saati yazar.
+Ayarlar `server/config.toml` dosyasında (konum, kutucuklar, yatay kullanım için `rotate = 90`).
+Mevsim listeleri ve pazarlar `server/local_data.py` dosyasında; GitHub uygulamasından
+telefonla düzenleyebilirsiniz. Değişiklik kaydedilince pano hemen yeniden üretilir.
 
-### Kişiselleştirme (telefondan da olur)
-
-- **Yapılacaklar:** `server/todo.txt` dosyasını GitHub uygulamasından düzenleyin. Her satır bir madde.
-- **Ayarlar:** `server/config.toml`: konum, kutucuklar, yatay kullanım (`rotate = 90`).
-- **Mevsim listeleri / pazarlar:** `server/local_data.py`.
-- **Takvim (isteğe bağlı):** Google Takvim → Ayarlar → takvim → *iCal biçiminde gizli adres*.
-  Bu adresi depoya **yazmayın** (depo herkese açık). Bunun yerine depo → Settings → Secrets and variables →
-  Actions → *New repository secret* yolunu izleyin: ad `CALENDAR_ICS_URLS`, değer adres(ler) (birden fazlaysa boşlukla ayırın).
-
-> Not: GitHub, depoda 60 gün hiç etkinlik olmazsa zamanlanmış işleri durdurur. İş akışının kendisi
-> her çalıştığında `display` dalına yazdığı için bu normalde olmaz. Olursa Actions sekmesinden yeniden etkinleştirin.
+> GitHub, depoda 60 gün hiç etkinlik olmazsa zamanlanmış işleri durdurabilir. Olursa Actions
+> sekmesinden **render** iş akışını yeniden etkinleştirin.
 
 ---
 
 ## 2. Kindle 4'ü hazırla (firmware 4.1.1)
 
 Önce sürümü doğrulayın: **Menu → Settings → Menu → Device Info**.
-
 Gerekli dosyalar MobileRead'deki NiLuJe dizinindedir:
 **https://www.mobileread.com/forums/showthread.php?t=225030** (Kindle 4 / "K4" bölümü).
 
@@ -81,62 +81,56 @@ Gerekli dosyalar MobileRead'deki NiLuJe dizinindedir:
 
 ### 2.3 Home Display eklentisi
 
-1. Depo → **Releases → "Kindle eklentisi"** → `homedisplay-kindle.zip` dosyasını indirin.
-   Bu paket `xh` dosyasını içerir. Depodaki `kindle/` klasöründe xh yoktur.
-2. Zip'i açın, içindeki `extensions` klasörünü Kindle'ın köküne kopyalayın (var olanla birleşsin).
-   Sonuç: `extensions/homedisplay/config.xml`, `extensions/homedisplay/bin/xh`.
+1. Depo → **Releases → "Kindle eklentisi"** → `homedisplay-kindle.zip` dosyasını indirin
+   (içinde `xh` hazır gelir).
+2. Zip'i açın, içindeki `extensions` klasörünü Kindle'ın köküne kopyalayın.
+   Sonuç: `extensions/homedisplay/config.xml` ve `extensions/homedisplay/bin/xh`.
 3. Kindle'da Wi-Fi'ye bağlanın. **Kindle'ın saati doğru olmalı**, yoksa HTTPS bağlantısı kurulamaz.
 4. KUAL → **Home Display → Tek seferlik yenile** ile görüntünün geldiğini kontrol edin.
 5. **Home Display → Başlat**.
 
-Başlatınca Kindle arayüzü durdurulur (çizilen görüntünün üstüne yazmasın diye) ve pano 15 dakikada
-bir kontrol edilir. Görüntü değişmediyse ekran yeniden çizilmez.
+Kindle saatte bir yeni görüntü olup olmadığına bakar. Görüntü değişmediyse ekrana dokunmaz;
+gece 00–05 arası hiç kontrol etmez.
 
 **Çıkış:** Home tuşuna basın. Tepki vermezse güç düğmesini ~20 sn basılı tutun; cihaz yeniden başlar
-ve normal haline döner (eklenti açılışta kendiliğinden çalışmaz).
+ve normal haline döner.
 
 ### Kindle ayarları: `extensions/homedisplay/config.sh`
 
 | Ayar | Varsayılan | Açıklama |
 |---|---|---|
 | `IMAGE_URL` | raw.githubusercontent… | Görüntünün adresi |
-| `REFRESH_SECONDS` | 900 | Kontrol aralığı |
-| `FULL_REFRESH_EVERY` | 6 | Kaç güncellemede bir tam yenileme (gölgeyi temizler) |
+| `REFRESH_SECONDS` | 3600 | Kontrol aralığı |
+| `FULL_REFRESH_EVERY` | 3 | Kaç güncellemede bir tam yenileme (gölgeyi temizler) |
 | `WAIT_MODE` | `sleep` | `sleep`: cihaz uyanık kalır (şarja takılı kullanım). `suspend`: RTC ile uyur (deneysel) |
-| `NIGHT_HOURS` | `0-6` | Bu saatlerde yenileme yapılmaz |
-| `WIFI_OFF_BETWEEN` | 0 | 1 yapılırsa Wi-Fi kontroller arasında kapanır |
+| `NIGHT_HOURS` | `0-5` | Bu saatlerde kontrol yapılmaz |
+| `WIFI_OFF_BETWEEN` | 0 | 1 yapılırsa Wi-Fi kontroller arasında kapanır (pil tasarrufu) |
 | `LOW_BATTERY` | 15 | Pil bu yüzdenin altına inince köşede uyarı çıkar |
 
 **Pil:** Duvarda kalıcı kullanım için USB şarja takılı tutun. Şarjsız kullanacaksanız
-`WIFI_OFF_BETWEEN=1` ile birkaç gün dayanır.
+`WIFI_OFF_BETWEEN=1` yapın.
 
 ---
 
 ## 3. Sorun giderme
 
 - **Log:** Kindle'da `/tmp/homedisplay.log`.
-- **"Sunucuya ulasilamadi":** Kindle saati yanlışsa HTTPS başarısız olur. Ayarlardan saati düzeltin.
-  `bin/xh` dosyasının yerinde olduğunu kontrol edin.
-- **Alt satırda "alınamadı: …":** O veri kaynağı o an yanıt vermemiş demektir. Pano yine çizilir.
+- **"Sunucuya ulasilamadi":** Kindle saati yanlışsa HTTPS başarısız olur. `bin/xh` dosyasının yerinde
+  olduğunu kontrol edin.
+- **Altta "Alınamadı: …":** O veri kaynağı o an yanıt vermemiş demektir, pano yine çizilir.
   Ayrıntı için Actions → render → son çalıştırmanın loguna bakın.
-- **Görüntü eski:** Actions sekmesinde render iş akışının çalıştığını kontrol edin.
-
-## Alternatif: yerel sunucu
-
-Evde sürekli açık bir makine varsa bulut yerine onu da kullanabilirsiniz:
-`pip install -r server/requirements.txt && python3 server/home_display.py serve` (ya da `docker compose up -d`).
-Kindle'daki `IMAGE_URL` değerini `http://<ip>:8080/display.png` yapın.
 
 ## Dosya yapısı
 
 ```
 server/
-  home_display.py      veri toplama + çizim (+ isteğe bağlı yerel HTTP sunucu)
-  local_data.py        mevsim meyve/sebze/balık, Kadıköy semt pazarları, ay evresi
+  home_display.py      veri toplama + pano çizimi
+  icons.py             meyve/sebze/balık ikonları
+  local_data.py        aylık mevsim listeleri, Kadıköy semt pazarları, ay evresi
   config.toml          ayarlar (herkese açık, gizli bilgi yazmayın)
-  todo.txt             yapılacaklar
+  fonts/               Noto Emoji (OFL lisansı)
 .github/workflows/
-  render.yml           her 30 dk panoyu üretip display dalına yazar
+  render.yml           günde 6 kez panoyu üretip display dalına yazar
   kindle-package.yml   Kindle eklentisini xh ile paketleyip Releases'e koyar
 kindle/extensions/homedisplay/   KUAL eklentisi
 ```

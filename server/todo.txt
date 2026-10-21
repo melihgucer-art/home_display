@@ -1,3 +1,0 @@
-# Her satır bir madde. Boş bırakırsanız bölüm gizlenir.
-Çöpü çıkar
-Faturaları öde

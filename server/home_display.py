@@ -1,28 +1,24 @@
 #!/usr/bin/env python3
 """Kindle 4 (600x800, 16 gri ton) için Erenköy / Kadıköy ev panosu PNG'si üretir.
 
-Kullanım:
-    python3 home_display.py render out.png   # tek seferlik çıktı (GitHub Actions bunu kullanır)
-    python3 home_display.py serve            # yerel ağda http://<ip>:8080/display.png
+GitHub Actions günde 6 kez çalıştırır:
+    python3 home_display.py out.png
 """
 from __future__ import annotations
 
 import datetime as dt
 import io
 import math
-import os
 import re
 import sys
-import threading
-import time
 import tomllib
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
+import icons
 import local_data
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -148,67 +144,6 @@ def fetch_pharmacies(loc: dict, limit: int = 2) -> list[dict]:
     return out[:limit]
 
 
-def _parse_ics_date(value: str, params: str, tz: ZoneInfo) -> tuple[dt.datetime, bool]:
-    if "VALUE=DATE" in params or len(value) == 8:
-        return dt.datetime.strptime(value[:8], "%Y%m%d").replace(tzinfo=tz), True
-    if value.endswith("Z"):
-        d = dt.datetime.strptime(value, "%Y%m%dT%H%M%SZ").replace(tzinfo=dt.timezone.utc)
-        return d.astimezone(tz), False
-    m = re.search(r"TZID=([^;:]+)", params)
-    src_tz = tz
-    if m:
-        try:
-            src_tz = ZoneInfo(m.group(1))
-        except Exception:  # noqa: BLE001
-            pass
-    d = dt.datetime.strptime(value[:15], "%Y%m%dT%H%M%S").replace(tzinfo=src_tz)
-    return d.astimezone(tz), False
-
-
-def fetch_calendar(urls: list[str], tz: ZoneInfo, now: dt.datetime, days: int, limit: int):
-    """Basit ICS okuyucu; günlük/haftalık/yıllık tekrarlar desteklenir."""
-    start_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    end = start_day + dt.timedelta(days=days)
-    events = []
-    for url in urls:
-        r = requests.get(url, headers=UA, timeout=HTTP_TIMEOUT)
-        r.raise_for_status()
-        text = re.sub(r"\r?\n[ \t]", "", r.text)
-        for block in text.split("BEGIN:VEVENT")[1:]:
-            fields = {}
-            for line in block.split("END:VEVENT")[0].splitlines():
-                if ":" in line:
-                    key, value = line.split(":", 1)
-                    name, _, params = key.partition(";")
-                    fields[name] = (value.strip(), params)
-            if "DTSTART" not in fields:
-                continue
-            start, all_day = _parse_ics_date(*fields["DTSTART"], tz)
-            summary = fields.get("SUMMARY", ("(adsız)", ""))[0].replace("\\,", ",")
-            rrule = fields.get("RRULE", ("", ""))[0]
-            step = {"FREQ=DAILY": dt.timedelta(days=1), "FREQ=WEEKLY": dt.timedelta(weeks=1)}
-            freq = next((k for k in step if k in rrule), None)
-            if freq and start < start_day:
-                delta = step[freq]
-                n = -(-(start_day - start) // delta)
-                start += delta * n
-            elif "FREQ=YEARLY" in rrule and start < start_day:
-                start = start.replace(year=start_day.year)
-                if start < start_day:
-                    start = start.replace(year=start_day.year + 1)
-            if start_day <= start < end:
-                events.append((start, all_day, summary))
-    events.sort(key=lambda e: e[0])
-    return events[:limit]
-
-
-def read_todo(path: Path, limit: int) -> list[str]:
-    if not path.exists():
-        return []
-    lines = [l.strip().lstrip("-*").strip() for l in path.read_text(encoding="utf-8").splitlines()]
-    return [l for l in lines if l and not l.startswith("#")][:limit]
-
-
 # ---------------------------------------------------------------- çizim yardımcıları
 
 _FONTS: dict[tuple[int, bool], ImageFont.FreeTypeFont] = {}
@@ -307,14 +242,6 @@ def tr_upper(text: str) -> str:
     return text.replace("i", "İ").replace("ı", "I").upper()
 
 
-def section_title(draw, x, y, w, text, right: str = "") -> int:
-    draw.text((x, y), tr_upper(text), font=font(18, True), fill=0)
-    if right:
-        draw.text((x + w, y + 2), right, font=font(15), fill=70, anchor="ra")
-    draw.line([x, y + 25, x + w, y + 25], fill=0, width=2)
-    return y + 33
-
-
 def aqi_label(aqi: float) -> str:
     for limit, name in ((20, "Çok iyi"), (40, "İyi"), (60, "Orta"), (80, "Kötü"), (100, "Çok kötü")):
         if aqi <= limit:
@@ -338,7 +265,7 @@ def render(cfg: dict) -> Image.Image:
     W, H = dcfg["width"], dcfg["height"]
     img = Image.new("L", (W, H), 255)
     d = ImageDraw.Draw(img)
-    M = 22
+    M = 20
     CW = W - 2 * M
     errors: list[str] = []
 
@@ -350,58 +277,58 @@ def render(cfg: dict) -> Image.Image:
             print(f"[uyarı] {name}: {e!r}", file=sys.stderr)
             return None
 
+    tiles_cfg = cfg.get("tiles", {})
     weather = safe("Hava", fetch_weather, loc)
-    air = safe("Hava kalitesi", fetch_air, loc) if cfg["tiles"].get("air", True) else None
-    sea = safe("Deniz", fetch_sea, loc) if cfg["tiles"].get("sea", True) else None
-    fin = safe("Piyasa", fetch_finance) if cfg["tiles"].get("finance", True) else None
+    air = safe("Hava kalitesi", fetch_air, loc) if tiles_cfg.get("air", True) else None
+    sea = safe("Deniz", fetch_sea, loc) if tiles_cfg.get("sea", True) else None
+    fin = safe("Piyasa", fetch_finance) if tiles_cfg.get("finance", True) else None
     holiday = safe("Tatil", fetch_next_holiday, today)
-    pharmacies = safe("Eczane", fetch_pharmacies, loc) if cfg["tiles"].get("pharmacy", True) else None
+    pharmacies = safe("Eczane", fetch_pharmacies, loc) if tiles_cfg.get("pharmacy", True) else None
 
     # --- başlık
-    d.rectangle([0, 0, W, 96], fill=0)
-    d.text((M, 10), GUNLER[now.weekday()], font=font(40, True), fill=255)
-    d.text((M, 58), f"{now.day} {AYLAR[now.month - 1]} {now.year}", font=font(24), fill=255)
-    d.text((W - M, 14), loc.get("name", ""), font=font(20, True), fill=255, anchor="ra")
-    sun_line = local_data.ay_evresi(today)
+    d.rectangle([0, 0, W, 82], fill=0)
+    d.text((M, 8), GUNLER[now.weekday()], font=font(36, True), fill=255)
+    d.text((M, 50), f"{now.day} {AYLAR[now.month - 1]} {now.year}", font=font(22), fill=255)
+    d.text((W - M, 10), loc.get("name", ""), font=font(20, True), fill=255, anchor="ra")
     if weather:
         daily = weather["daily"]
-        sun_line = f"Gün doğumu {daily['sunrise'][0][-5:]} · Batımı {daily['sunset'][0][-5:]}"
-        d.text((W - M, 66), local_data.ay_evresi(today), font=font(17), fill=255, anchor="ra")
-    d.text((W - M, 42), sun_line, font=font(17), fill=255, anchor="ra")
-    y = 108
+        d.text((W - M, 38), f"Gün doğumu {daily['sunrise'][0][-5:]} · Batımı {daily['sunset'][0][-5:]}",
+               font=font(16), fill=255, anchor="ra")
+    d.text((W - M, 58), local_data.ay_evresi(today), font=font(16), fill=255, anchor="ra")
+    y = 92
 
     # --- hava durumu
     if weather:
         cur, daily = weather["current"], weather["daily"]
-        weather_icon(d, cur["weather_code"], M, y, 112, night=not cur.get("is_day", 1))
-        d.text((M + 128, y - 6), f"{round(cur['temperature_2m'])}°", font=font(84, True), fill=0)
-        d.text((M + 132, y + 92), WMO.get(cur["weather_code"], ""), font=font(21), fill=0)
-        lines = [
+        weather_icon(d, cur["weather_code"], M, y, 92, night=not cur.get("is_day", 1))
+        d.text((M + 104, y - 6), f"{round(cur['temperature_2m'])}°", font=font(70, True), fill=0)
+        d.text((M + 108, y + 76), WMO.get(cur["weather_code"], ""), font=font(19), fill=0)
+        details = [
             f"Hissedilen {round(cur['apparent_temperature'])}°",
             f"Nem %{cur['relative_humidity_2m']}",
             f"{wind_dir(cur['wind_direction_10m'])} {round(cur['wind_speed_10m'])} km/s",
             f"UV {round(daily['uv_index_max'][0] or 0)}",
         ]
-        for i, line in enumerate(lines):
-            d.text((W - M, y + 2 + i * 27), line, font=font(20), fill=0, anchor="ra")
-        y += 120
+        for i, line in enumerate(details):
+            d.text((W - M, y + i * 24), line, font=font(18), fill=0, anchor="ra")
+        y += 106
         col = CW / 4
         for i in range(4):
             cx = M + col * i + col / 2
             day = dt.date.fromisoformat(daily["time"][i])
-            d.text((cx, y), "Bugün" if i == 0 else GUN_KISA[day.weekday()], font=font(18, True), fill=0, anchor="ma")
-            weather_icon(d, daily["weather_code"][i], cx - 26, y + 22, 52)
-            d.text((cx, y + 80), f"{round(daily['temperature_2m_max'][i])}° / {round(daily['temperature_2m_min'][i])}°",
-                   font=font(18), fill=0, anchor="ma")
+            d.text((cx, y), "Bugün" if i == 0 else GUNLER[day.weekday()], font=font(16, True), fill=0, anchor="ma")
+            weather_icon(d, daily["weather_code"][i], cx - 20, y + 20, 40)
+            d.text((cx, y + 64), f"{round(daily['temperature_2m_max'][i])}° / {round(daily['temperature_2m_min'][i])}°",
+                   font=font(16), fill=0, anchor="ma")
             pp = daily["precipitation_probability_max"][i]
             if pp is not None:
-                d.text((cx, y + 102), f"Yağış %{pp}", font=font(15), fill=70, anchor="ma")
+                d.text((cx, y + 84), f"Yağış %{pp}", font=font(14), fill=70, anchor="ma")
             if i:
-                d.line([M + col * i, y, M + col * i, y + 118], fill=170, width=1)
-        y += 124
+                d.line([M + col * i, y, M + col * i, y + 100], fill=170, width=1)
+        y += 108
     else:
-        d.text((M, y), "Hava durumu alınamadı", font=font(22), fill=60)
-        y += 40
+        d.text((M, y), "Hava durumu alınamadı", font=font(20), fill=60)
+        y += 36
 
     # --- kutucuklar
     tiles: list[tuple[str, str, str]] = []
@@ -419,48 +346,55 @@ def render(cfg: dict) -> Image.Image:
         tw = (CW - (n - 1) * 8) / n
         for i, (label, value, sub) in enumerate(tiles):
             x0 = M + i * (tw + 8)
-            d.rounded_rectangle([x0, y, x0 + tw, y + 76], radius=8, outline=0, width=2)
-            d.text((x0 + tw / 2, y + 6), label, font=font(15), fill=60, anchor="ma")
-            d.text((x0 + tw / 2, y + 26), ellipsize(d, value, font(24, True), int(tw - 8)),
-                   font=font(24, True), fill=0, anchor="ma")
-            d.text((x0 + tw / 2, y + 55), ellipsize(d, sub, font(14), int(tw - 8)), font=font(14), fill=60, anchor="ma")
-        y += 86
+            d.rounded_rectangle([x0, y, x0 + tw, y + 66], radius=8, outline=0, width=2)
+            d.text((x0 + tw / 2, y + 5), label, font=font(14), fill=60, anchor="ma")
+            d.text((x0 + tw / 2, y + 22), ellipsize(d, value, font(22, True), int(tw - 8)),
+                   font=font(22, True), fill=0, anchor="ma")
+            d.text((x0 + tw / 2, y + 48), ellipsize(d, sub, font(13), int(tw - 8)), font=font(13), fill=60, anchor="ma")
+        y += 76
 
-    # --- mevsiminde
-    meyve, sebze, balik = local_data.MEVSIM[today.month]
-    y = section_title(d, M, y, CW, f"Mevsiminde · {AYLAR[today.month - 1]}")
-    label_w = 72
-    for label, items in (("Meyve", meyve), ("Sebze", sebze), ("Balık", balik)):
-        d.text((M, y), label, font=font(18, True), fill=0)
-        # listeler önem sırasına göre; tek satıra sığmayanlar atlanır
-        shown = []
-        for item in items:
-            if d.textlength(", ".join(shown + [item]), font=font(18)) > CW - label_w:
-                break
-            shown.append(item)
-        d.text((M + label_w, y), ", ".join(shown), font=font(18), fill=0)
-        y += 26
+    # --- mevsiminde: ay adı + ikonlu ürün ızgarası
+    d.text((M, y), tr_upper(AYLAR[today.month - 1]), font=font(30, True), fill=0)
     note = local_data.balik_notu(today)
-    if note:
-        d.text((M + label_w, y - 2), note, font=font(15), fill=70)
-        y += 20
-    y += 4
+    d.text((W - M, y + 10), "Mevsiminde" + (f" · {note}" if note else ""), font=font(18), fill=60, anchor="ra")
+    y += 38
+    d.line([M, y, W - M, y], fill=0, width=2)
+    y += 6
+    label_w = 62
+    per_row = 6
+    cell = (CW - label_w) / per_row
+    icon_px = 50
+    for label, kind, items in zip(("Meyve", "Sebze", "Balık"), ("meyve", "sebze", "balik"),
+                                  local_data.MEVSIM[today.month]):
+        row_h = 86
+        d.text((M, y + 32), label, font=font(16, True), fill=0)
+        for i, name in enumerate(items[:per_row]):
+            cx = M + label_w + cell * i + cell / 2
+            # balıklar yatay olduğu için daha geniş çizilip dikeyde ortalanır
+            px = 72 if kind == "balik" else icon_px
+            icon = icons.render_icon(name, kind, px)
+            if kind == "balik":
+                icon = icon.crop((0, (px - icon_px) // 2, px, (px - icon_px) // 2 + icon_px))
+            img.paste(icon, (int(cx - icon.width / 2), int(y + 2)))
+            lines = wrap(d, name, font(13), int(cell - 4))[:2]
+            for j, line in enumerate(lines):
+                d.text((cx, y + icon_px + 6 + j * 15), line, font=font(13), fill=0, anchor="ma")
+        y += row_h
+    y += 2
 
     # --- semt
-    y = section_title(d, M, y, CW, "Semt")
+    d.line([M, y, W - M, y], fill=0, width=2)
+    y += 8
     rows: list[tuple[str, str]] = []
-    bugun = local_data.pazarlar(today)
-    yarin = local_data.pazarlar(today + dt.timedelta(days=1))
-    bugun = [p.removesuffix(" Pazarı") for p in bugun]
-    yarin = [p.removesuffix(" Pazarı") for p in yarin]
+    bugun = [p.removesuffix(" Pazarı") for p in local_data.pazarlar(today)]
+    yarin = [p.removesuffix(" Pazarı") for p in local_data.pazarlar(today + dt.timedelta(days=1))]
     pazar = []
     if bugun:
         pazar.append("Bugün: " + ", ".join(bugun))
     if yarin:
         pazar.append("Yarın: " + ", ".join(yarin))
     if not any("Erenköy" in p for p in pazar):
-        gun = (3 - today.weekday()) % 7
-        pazar.append(f"Erenköy {gun} gün sonra")
+        pazar.append(f"Erenköy {(3 - today.weekday()) % 7} gün sonra")
     rows.append(("Pazar", " · ".join(pazar)))
     if pharmacies:
         for i, e in enumerate(pharmacies):
@@ -474,43 +408,16 @@ def render(cfg: dict) -> Image.Image:
         when = "bugün" if left == 0 else ("yarın" if left == 1 else f"{left} gün sonra")
         rows.append(("Tatil", f"{hname}, {hday.day} {AYLAR[hday.month - 1]} ({when})"))
 
-    # takvim (ICS adresleri GitHub Secrets'ta: CALENDAR_ICS_URLS, satır/boşlukla ayrılmış)
-    ics = os.environ.get("CALENDAR_ICS_URLS", "").split() or cfg.get("calendar", {}).get("ics_urls", [])
-    if ics:
-        events = safe("Takvim", fetch_calendar, ics, tz, now, 7, 3) or []
-        for start, all_day, summary in events:
-            if start.date() == today:
-                day = "Bugün"
-            elif start.date() == today + dt.timedelta(days=1):
-                day = "Yarın"
-            else:
-                day = f"{GUN_KISA[start.weekday()]} {start.day}"
-            rows.append(("Takvim", f"{day}{'' if all_day else start.strftime(' %H:%M')} · {summary}"))
-
-    todo = read_todo(BASE_DIR / cfg.get("todo", {}).get("file", "todo.txt"), 4)
-    if todo:
-        rows.append(("Yapılacak", " · ".join(todo)))
-
+    bottom = H - (22 if errors else 6)
     for label, text in rows:
-        if y > H - 70:
+        if y + 20 > bottom:
             break
-        d.text((M, y), label, font=font(18, True), fill=0)
-        lines = wrap(d, text, font(18), CW - 110)
-        max_lines = max(1, min(2, (H - 48 - y) // 23))
-        if len(lines) > max_lines:
-            lines = lines[:max_lines]
-            lines[-1] = ellipsize(d, lines[-1] + " …", font(18), CW - 110)
-        for j, line in enumerate(lines):
-            d.text((M + 110, y + j * 23), line, font=font(18), fill=0)
-        y += 23 * len(lines) + 5
+        d.text((M, y), label, font=font(16, True), fill=0)
+        d.text((M + 80, y), ellipsize(d, text, font(16), CW - 80), font=font(16), fill=0)
+        y += 22
 
-    # --- alt bilgi
-    d.line([M, H - 34, W - M, H - 34], fill=0, width=1)
-    footer = "Güncellendi " + now.strftime("%H:%M")
     if errors:
-        footer += " · alınamadı: " + ", ".join(errors)
-    d.text((M, H - 26), ellipsize(d, footer, font(15), CW - 120), font=font(15), fill=60)
-    d.text((W - M, H - 26), dcfg.get("title", ""), font=font(15, True), fill=0, anchor="ra")
+        d.text((M, H - 20), ellipsize(d, "Alınamadı: " + ", ".join(errors), font(13), CW), font=font(13), fill=80)
 
     rot = dcfg.get("rotate", 0)
     if rot:
@@ -524,65 +431,11 @@ def to_png(img: Image.Image) -> bytes:
     return buf.getvalue()
 
 
-# ---------------------------------------------------------------- yerel sunucu (isteğe bağlı)
-
-class Cache:
-    def __init__(self):
-        self.lock = threading.Lock()
-        self.data = b""
-        self.at = 0.0
-
-    def get(self) -> bytes:
-        cfg = load_config()
-        with self.lock:
-            if not self.data or time.time() - self.at > cfg["server"].get("cache_seconds", 300):
-                self.data = to_png(render(cfg))
-                self.at = time.time()
-            return self.data
-
-
-CACHE = Cache()
-
-
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        path = self.path.split("?")[0]
-        if path in ("/", "/display.png"):
-            try:
-                body = CACHE.get()
-            except Exception as e:  # noqa: BLE001
-                self.send_error(500, str(e))
-                return
-            self.send_response(200)
-            self.send_header("Content-Type", "image/png")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(body)
-        elif path == "/health":
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"ok")
-        else:
-            self.send_error(404)
-
-
 def main(argv: list[str]) -> int:
-    cmd = argv[1] if len(argv) > 1 else "render"
-    cfg = load_config()
-    if cmd == "render":
-        out = Path(argv[2] if len(argv) > 2 else "display.png")
-        out.write_bytes(to_png(render(cfg)))
-        print(f"yazıldı: {out}")
-        return 0
-    if cmd == "serve":
-        s = cfg["server"]
-        srv = ThreadingHTTPServer((s.get("host", "0.0.0.0"), s.get("port", 8080)), Handler)
-        print(f"http://{s.get('host')}:{s.get('port')}/display.png")
-        srv.serve_forever()
-        return 0
-    print(__doc__)
-    return 1
+    out = Path(argv[1] if len(argv) > 1 else "display.png")
+    out.write_bytes(to_png(render(load_config())))
+    print(f"yazıldı: {out}")
+    return 0
 
 
 if __name__ == "__main__":
