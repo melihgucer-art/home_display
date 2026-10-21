@@ -7,39 +7,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: sources
-        run: |
-          set +e
-          echo "=== fonts"; fc-list | grep -i dejavu | head -3
-          echo "=== ibb package_search"
-          curl -s 'https://data.ibb.gov.tr/api/3/action/package_search?q=baraj%20doluluk&rows=5' | python3 -c "
-          import json,sys
-          d=json.load(sys.stdin)
-          for p in d['result']['results']:
-              print('PKG', p['name'], '|', p['title'])
-              for r in p['resources']:
-                  print('   RES', r['id'], r.get('format'), r.get('datastore_active'), r.get('name'))
-          "
-          for id in $(curl -s 'https://data.ibb.gov.tr/api/3/action/package_search?q=baraj%20doluluk&rows=5' | python3 -c "
-          import json,sys
-          d=json.load(sys.stdin)
-          print(' '.join(r['id'] for p in d['result']['results'] for r in p['resources'] if r.get('datastore_active')))"); do
-            echo "--- $id"; curl -s "https://data.ibb.gov.tr/api/3/action/datastore_search?resource_id=$id&limit=2&sort=_id%20desc" | head -c 1500; echo
-          done
-          echo "=== eczane"
-          curl -s -A 'Mozilla/5.0' https://www.eczaneler.gen.tr/nobetci-istanbul-kadikoy -o ecz.html; ls -la ecz.html
-          grep -o 'Eczanesi' ecz.html | wc -l
-          python3 - <<'PY'
-          s=open('ecz.html',encoding='utf-8',errors='replace').read()
-          i=s.find('Eczanesi')
-          print(s[max(0,i-3000):i+2500])
-          PY
-          echo "=== nager"; curl -s https://date.nager.at/api/v3/NextPublicHolidays/TR | head -c 600; echo
-          echo "=== truncgil"; curl -s https://finans.truncgil.com/today.json | head -c 800; echo
-          echo "=== frankfurter"; curl -s 'https://api.frankfurter.app/latest?from=TRY&to=USD,EUR'; echo
-          echo "=== marine"; curl -s 'https://marine-api.open-meteo.com/v1/marine?latitude=40.955&longitude=29.06&current=sea_surface_temperature,wave_height'; echo
-          echo "=== aq"; curl -s 'https://air-quality-api.open-meteo.com/v1/air-quality?latitude=40.9735&longitude=29.077&current=european_aqi,pm2_5,pm10'; echo
-          echo "=== kindle-dash release"
-          gh release view -R pascalw/kindle-dash --json tagName,assets | head -c 1500; echo
-          gh release download -R pascalw/kindle-dash -p '*' -D kd && ls -la kd && for f in kd/*; do case "$f" in *.tgz|*.tar.gz) tar tzf "$f" | head -40;; *.zip) unzip -l "$f" | head -40;; esac; done
         env:
           GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36'
+          echo "=== kindle-dash scripts"
+          gh release download -R pascalw/kindle-dash -p '*.tgz' -D kd && mkdir x && tar xzf kd/*.tgz -C x
+          for f in dash.sh start.sh stop.sh wait-for-wifi.sh local/fetch-dashboard.sh local/env.sh local/low-battery.sh; do echo "##### $f"; cat "x/$f"; done
+          file x/xh x/next-wakeup; ls -la x
+          echo "=== truncgil keys"; curl -s https://finans.truncgil.com/today.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(list(d)); print(d.get('gram-altin'))"
+          echo "=== iski"
+          curl -s -A "$UA" https://iski.istanbul/baraj-doluluk/ -o iski.html; ls -la iski.html
+          grep -oE '(https?:)?//[^"'"'"' ]*(api|json|baraj)[^"'"'"' ]*' iski.html | sort -u | head -40
+          grep -oE 'src="[^"]+\.js[^"]*"' iski.html | head -20
+          echo "=== iski api guesses"
+          for u in https://iski.istanbul/api/iski/baraj/doluluk https://iski.istanbul/web/api/baraj https://iski.istanbul/api/baraj-doluluk; do echo "$u $(curl -s -o /dev/null -w '%{http_code}' -A "$UA" $u)"; done
+          echo "=== IEO"
+          curl -s -A "$UA" https://www.istanbuleczaciodasi.org.tr/nobetci-eczane/ -o ieo.html; ls -la ieo.html
+          grep -oiE '(ajax|url|action|\$\.post|\$\.get|fetch)[^;]{0,200}' ieo.html | head -30
+          grep -oE 'src="[^"]+\.js[^"]*"' ieo.html | head
+          python3 -c "s=open('ieo.html',errors='replace').read(); i=s.find('Kadıköy'); print(s[max(0,i-1500):i+800])"
+          echo "=== nobetcieczane.org"
+          curl -s -A "$UA" https://nobetcieczane.org/istanbul/kadikoy -o n1.html; ls -la n1.html; grep -c Eczanesi n1.html
+          python3 -c "s=open('n1.html',errors='replace').read(); i=s.find('Eczanesi'); print(s[max(0,i-1500):i+3000])"
+          echo "=== nobetcienyakineczane"
+          curl -s -A "$UA" https://nobetcienyakineczane.com/istanbul/kadikoy -o n2.html; ls -la n2.html; grep -c Eczanesi n2.html
+          python3 -c "s=open('n2.html',errors='replace').read(); i=s.find('Eczanesi'); print(s[max(0,i-1500):i+2500])"
