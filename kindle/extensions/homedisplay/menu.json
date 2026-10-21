@@ -22,14 +22,24 @@
           "exitmenu": true
         },
         {
-          "name": "Amazon'u engelle (Wi-Fi'den önce)",
+          "name": "Pil tasarrufunu aç",
           "priority": 4,
+          "action": "bin/powersave-on.sh"
+        },
+        {
+          "name": "Pil tasarrufunu kapat",
+          "priority": 5,
+          "action": "bin/powersave-off.sh"
+        },
+        {
+          "name": "Amazon'u engelle (Wi-Fi'den önce)",
+          "priority": 6,
           "action": "bin/amazon-block.sh",
           "exitmenu": true
         },
         {
           "name": "Amazon engelini kaldır",
-          "priority": 5,
+          "priority": 7,
           "action": "bin/amazon-unblock.sh"
         }
       ]
