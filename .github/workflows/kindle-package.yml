@@ -37,7 +37,15 @@ jobs:
           curl -fsSL -o mkk.tar.xz "$B/Touch/kindle-mkk-20141129-r18833.tar.xz"
           echo "8af8c2a4cbdf6a9f4a45a63bb4c4dd02  mkk.tar.xz" | md5sum -c -
           curl -fsSL -o kual.tar.xz "$B/KUAL/KUAL-v2.7.37-gfcb45b5-20250419.tar.xz"
-          mkdir mkk kual && tar xJf mkk.tar.xz -C mkk && tar xJf kual.tar.xz -C kual
+          curl -fsSL -o jb.tar.xz "$B/Touch/kindle-k4-jailbreak-1.8.N-r18977.tar.xz"
+          echo "8b8dc46c1568655c93244abdce93556a  jb.tar.xz" | md5sum -c -
+          mkdir mkk kual jb && tar xJf mkk.tar.xz -C mkk && tar xJf kual.tar.xz -C kual && tar xJf jb.tar.xz -C jb
+          # Amazon engelleme eklentisi (LunarEclipse, K3/K4'te denenmiş; NTP'yi engellemez)
+          curl -fsSL -o blockamazon.zip "https://codeberg.org/LunarEclipse/kindle-block-amazon/archive/main.zip"
+          mkdir blockamazon && unzip -q blockamazon.zip -d blockamazon
+          echo "===== blockamazon içeriği (incelemek için) ====="
+          find blockamazon -type f | sort
+          for f in $(find blockamazon -type f \( -name '*.sh' -o -name '*.json' -o -name '*.xml' \)); do echo "##### $f"; cat "$f"; done
           # 2025 sertifika güncellemesi MobileRead'deki bir forum ekinde
           curl -fsSL -A "Mozilla/5.0" -o post.html "https://www.mobileread.com/forums/showpost.php?p=4506164&postcount=1295"
           att=$(grep -oE 'attachment\.php\?[^"]*attachmentid=[0-9]+[^"]*' post.html | head -1 | sed 's/&amp;/\&/g')
