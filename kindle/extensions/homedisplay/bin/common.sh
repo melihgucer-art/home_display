@@ -9,6 +9,17 @@ IMG=/tmp/homedisplay.png
 # Log USB belleğe yazılır: Mac'ten Kindle/extensions/homedisplay/homedisplay.log olarak okunabilir
 LOG="$DIR/homedisplay.log"
 
+# Arka planda, oturumdan bağımsız çalıştır (Kindle'da nohup her zaman bulunmayabilir)
+bg() {
+    if command -v setsid >/dev/null 2>&1; then
+        setsid "$@" >> "$LOG" 2>&1 < /dev/null &
+    elif command -v nohup >/dev/null 2>&1; then
+        nohup "$@" >> "$LOG" 2>&1 < /dev/null &
+    else
+        "$@" >> "$LOG" 2>&1 < /dev/null &
+    fi
+}
+
 log() {
     # 100 KB'ı geçerse son kısmı tut
     if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 102400 ]; then

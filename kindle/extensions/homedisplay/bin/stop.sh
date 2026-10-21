@@ -1,7 +1,9 @@
 #!/bin/sh
 . "$(dirname "$0")/common.sh"
 for f in "$PIDFILE" /tmp/homedisplay-key.pid; do
-    [ -f "$f" ] && kill "$(cat "$f")" 2>/dev/null
+    pid="$(cat "$f" 2>/dev/null)"
+    # Home tuşu dinleyicisi bu betiği exec ile çalıştırır: kendimizi öldürmeyelim
+    [ -n "$pid" ] && [ "$pid" != "$$" ] && kill "$pid" 2>/dev/null
     rm -f "$f"
 done
 [ -w "$RTC_DEV/wakealarm" ] && echo 0 > "$RTC_DEV/wakealarm"

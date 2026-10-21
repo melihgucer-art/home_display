@@ -275,6 +275,7 @@ def test_start_twice_does_not_spawn_twice(kindle):
                        env=env, timeout=20)
     assert r.returncode == 0
     assert not any(l.startswith("nohup") for l in kindle.log()), "zaten çalışıyorsa ikinci kez başlamamalı"
+    assert "zaten çalışıyor" in (kindle.ext / "homedisplay.log").read_text()
 
 
 def test_stop_cleans_up(kindle):
@@ -384,3 +385,46 @@ def test_menu_closes_kual_for_drawing_actions():
     by_action = {i["action"]: i for i in items}
     assert by_action["bin/once.sh"].get("exitmenu") is True
     assert by_action["bin/start.sh"].get("exitmenu") is True
+
+
+def _wait_for(path, text, seconds=15):
+    import time
+    end = time.time() + seconds
+    while time.time() < end:
+        if path.exists() and text in path.read_text():
+            return True
+        time.sleep(0.2)
+    return False
+
+
+def test_start_launches_loop_that_survives_parent(kindle):
+    """start.sh hemen çıkmalı; döngü arka planda kendi başına yaşayıp arayüzü kendisi durdurmalı."""
+    kindle.config(REFRESH_SECONDS=1, NIGHT_HOURS="")
+    env = {"PATH": f"{kindle.stub}:{os.environ['PATH']}"}
+    log = kindle.ext / "homedisplay.log"
+    try:
+        r = subprocess.run(kindle.shell + [str(kindle.ext / "bin" / "start.sh")], capture_output=True,
+                           text=True, env=env, timeout=10)
+        assert r.returncode == 0  # ebeveyn hemen döndü
+        assert _wait_for(log, "döngü başladı"), log.read_text() if log.exists() else "log yok"
+        assert _wait_for(log, "Kindle arayüzü durduruldu")
+        assert _wait_for(log, "görüntü güncellendi"), log.read_text()
+        pid = int((kindle.tmpdir / "homedisplay.pid").read_text())
+        os.kill(pid, 0)  # süreç hâlâ yaşıyor
+    finally:
+        for f in ("homedisplay.pid", "homedisplay-key.pid"):
+            try:
+                os.kill(int((kindle.tmpdir / f).read_text()), 9)
+            except (OSError, ValueError):
+                pass
+
+
+def test_stop_called_from_keywatch_does_not_kill_itself(kindle):
+    """keywatch stop.sh'yi exec ile çalıştırır; key.pid stop.sh'nin kendi PID'i olur."""
+    script = kindle.ext / "bin" / "_stop_self.sh"
+    script.write_text(f'#!/bin/sh\necho $$ > "{kindle.tmpdir}/homedisplay-key.pid"\nexec "{kindle.ext}/bin/stop.sh"\n')
+    env = {"PATH": f"{kindle.stub}:{os.environ['PATH']}"}
+    r = subprocess.run(kindle.shell + [str(script)], capture_output=True, text=True, env=env, timeout=10)
+    assert r.returncode == 0, (r.returncode, r.stderr)
+    assert any("preventScreenSaver 0" in l for l in kindle.log()), "stop.sh sonuna kadar çalışmalı"
+    assert "durduruldu" in (kindle.ext / "homedisplay.log").read_text()
