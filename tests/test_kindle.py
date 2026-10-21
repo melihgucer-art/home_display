@@ -84,7 +84,9 @@ cat "{self.state}/body" > "$out"
     def run(self, snippet: str, hour: str = "12") -> subprocess.CompletedProcess:
         _exe(self.stub / "date", f'case "$1" in +%H) echo {hour} ;; *) /bin/date "$@" ;; esac\n')
         script = self.ext / "bin" / "_test.sh"
-        script.write_text('#!/bin/sh\n. "$(dirname "$0")/common.sh"\n' + snippet + "\n")
+        # busybox sleep'i kendi içinden çalıştırır (PATH'e bakmaz); fonksiyon her iki kabukta da önceliklidir
+        fake_sleep = f'sleep() {{ echo "sleep $*" >> "{self.calls}"; }}\n'
+        script.write_text('#!/bin/sh\n' + fake_sleep + '. "$(dirname "$0")/common.sh"\n' + snippet + "\n")
         env = {"PATH": f"{self.stub}:{os.environ['PATH']}", "HOME": str(self.tmpdir)}
         return subprocess.run(self.shell + [str(script)], capture_output=True, text=True, env=env, timeout=20)
 
