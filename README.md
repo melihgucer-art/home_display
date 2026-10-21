@@ -1,163 +1,142 @@
-# Home Display — Kindle 4 (firmware 4.1.1)
+# Home Display — Kindle 4 (firmware 4.1.1) · Erenköy / Kadıköy
 
-Kindle 4'ü (klavyesiz, dokunmatiksiz "Kindle 4 NT") duvara asılabilir bir ev panosuna çevirir.
+Kindle 4'ü (klavyesiz "Kindle 4 NT") duvara asılabilir bir ev panosuna çevirir.
+**Sıfır maliyetlidir:** sunucu, abonelik ya da API anahtarı gerekmez.
 
 ```
-┌──────────────┐    HTTP (yerel ağ)    ┌──────────────────────────┐
-│  Kindle 4    │ ───── display.png ──▶ │ Sunucu (PC / Raspberry Pi│
-│  wget + eips │ ◀──────────────────── │ / NAS / Docker)          │
-└──────────────┘    her 5 dakikada     └──────────────────────────┘
+ GitHub Actions (ücretsiz)            GitHub (ücretsiz barındırma)          Kindle 4
+ her 30 dk: verileri topla,   ──▶   "display" dalı: display.png   ──▶   15 dk'da bir indir,
+ 600×800 PNG çiz                                                          değiştiyse ekrana bas
 ```
 
-Görüntüyü sunucu üretir (600×800, 16 gri ton PNG). Kindle sadece bu dosyayı indirip
-`eips` ile ekrana basar. Kindle'ın eski tarayıcısı ve TLS desteği hiç devreye girmez.
-
-**Ekranda neler var** (her biri `config.toml` dosyasından açılıp kapatılabilir):
-
-- Gün, tarih, saat (Türkçe)
-- Hava durumu: şu anki durum ve 4 günlük tahmin ([Open-Meteo](https://open-meteo.com), API anahtarı gerekmez)
-- Döviz: USD/TRY, EUR/TRY (ECB / frankfurter.app)
-- Home Assistant sensörleri (sıcaklık, nem vb.)
-- Takvim: Google/iCloud/Outlook takviminin gizli ICS adresi
-- Yapılacaklar listesi (`server/todo.txt`)
+Görüntüyü GitHub Actions üretir. Herkese açık depolarda Actions dakikaları sınırsız ve ücretsizdir.
+Kindle PNG'yi `raw.githubusercontent.com` adresinden indirir. Kindle 4'ün kendi `wget`'i
+modern HTTPS'e bağlanamaz; bu yüzden pakete [kindle-dash](https://github.com/pascalw/kindle-dash)
+projesinin K4 için derlenmiş `xh` istemcisi eklenmiştir.
 
 ![örnek](docs/preview.png)
 
+## Ekranda neler var
+
+| Bölüm | İçerik | Kaynak (hepsi ücretsiz, anahtarsız) |
+|---|---|---|
+| Başlık | Gün, tarih, gün doğumu/batımı, ay evresi | Open-Meteo + yerel hesap |
+| Hava | Erenköy'de anlık durum, hissedilen, nem, rüzgar (poyraz/lodos…), UV, 4 günlük tahmin | [Open-Meteo](https://open-meteo.com) |
+| Kutucuklar | Hava kalitesi (PM2.5), Caddebostan açığında deniz suyu sıcaklığı, dolar/euro, gram altın | Open-Meteo Air Quality + Marine, [truncgil finans](https://finans.truncgil.com) |
+| Mevsiminde | O ayın meyveleri, sebzeleri, İstanbul balıkları; av yasağı (15 Nisan – 31 Ağustos) uyarısı | `server/local_data.py` |
+| Semt | Bugün/yarın kurulan pazarlar (Erenköy Pazarı Perşembe, Göztepe Pazartesi, Organik Halk Pazarı Çarşamba…), sıradaki resmi tatil, takvim, yapılacaklar | Kadıköy Belediyesi listesi, [Nager.Date](https://date.nager.at) |
+
+İstenmediği için deprem ve ezan vakti bilgisi **yoktur**.
+
 ---
 
-## 1. Sunucuyu kur
+## 1. Bulut tarafı (bir kez, 2 dakika)
 
-Sunucu, evde sürekli açık duran herhangi bir makinede çalışabilir.
+Depo hazır. Yapmanız gereken tek şey Actions'ın çalıştığını doğrulamak:
 
-### Docker ile
+1. GitHub'da depo → **Actions** sekmesi. "I understand my workflows, go ahead and enable them" çıkarsa onaylayın.
+2. **render** iş akışı → **Run workflow**. Bir dakika içinde `display` dalı oluşur.
+3. Tarayıcıda şu adresi açın, panoyu görmelisiniz:
+   `https://raw.githubusercontent.com/melihgucer-art/home_display/display/display.png`
 
-```sh
-cp server/config.example.toml server/config.toml   # ayarları düzenleyin
-cp server/todo.example.txt server/todo.txt
-docker compose up -d --build
-```
+Bundan sonra görüntü her saat :07 ve :37'de kendiliğinden yenilenir. GitHub zamanlanmış işleri
+yoğunlukta 5–15 dk geciktirebilir. Saat bu yüzden görüntüye konmadı; altta "Güncellendi" saati yazar.
 
-### Docker olmadan (Raspberry Pi vb.)
+### Kişiselleştirme (telefondan da olur)
 
-```sh
-cd server
-pip install -r requirements.txt          # Pillow, requests
-cp config.example.toml config.toml
-python3 home_display.py serve
-```
+- **Yapılacaklar:** `server/todo.txt` dosyasını GitHub uygulamasından düzenleyin. Her satır bir madde.
+- **Ayarlar:** `server/config.toml`: konum, kutucuklar, yatay kullanım (`rotate = 90`).
+- **Mevsim listeleri / pazarlar:** `server/local_data.py`.
+- **Takvim (isteğe bağlı):** Google Takvim → Ayarlar → takvim → *iCal biçiminde gizli adres*.
+  Bu adresi depoya **yazmayın** (depo herkese açık). Bunun yerine depo → Settings → Secrets and variables →
+  Actions → *New repository secret* yolunu izleyin: ad `CALENDAR_ICS_URLS`, değer adres(ler) (birden fazlaysa boşlukla ayırın).
 
-Sürekli çalışsın diye `server/home-display.service` dosyasını `/etc/systemd/system/` altına
-kopyalayın (yolları kendinize göre düzeltin), sonra `sudo systemctl enable --now home-display` çalıştırın.
-
-Tarayıcıdan `http://<sunucu-ip>:8080/display.png` adresini açın; panoyu görüyorsanız sunucu tarafı hazır.
-Bilgisayarda çalışırken önizleme almak için `python3 home_display.py render onizleme.png` de kullanılabilir.
-
-> Sunucuya sabit bir IP verin (modem arayüzünden DHCP rezervasyonu), yoksa Kindle bir gün onu bulamaz.
+> Not: GitHub, depoda 60 gün hiç etkinlik olmazsa zamanlanmış işleri durdurur. İş akışının kendisi
+> her çalıştığında `display` dalına yazdığı için bu normalde olmaz. Olursa Actions sekmesinden yeniden etkinleştirin.
 
 ---
 
 ## 2. Kindle 4'ü hazırla (firmware 4.1.1)
 
-Önce sürümü doğrulayın: **Menu → Settings → Menu → Device Info**. 4.1.1 değilse aşağıdaki
-dosyaların o sürüme uygun olanlarını seçin.
+Önce sürümü doğrulayın: **Menu → Settings → Menu → Device Info**.
 
-Bütün dosyalar MobileRead forumunda NiLuJe'nin dizinindedir:
+Gerekli dosyalar MobileRead'deki NiLuJe dizinindedir:
 **https://www.mobileread.com/forums/showthread.php?t=225030** (Kindle 4 / "K4" bölümü).
 
 ### 2.1 Jailbreak
 
-1. MobileRead'den **Kindle 4 jailbreak** paketini (`kindle-k4-jailbreak-*.zip`) indirip açın.
-2. Kindle'ı USB ile bilgisayara bağlayın. Paketteki `data.tar.gz`, `ENABLE_DIAGS` dosyasını
-   ve `diagnostic_logs` klasörünü Kindle'ın kök dizinine kopyalayın.
-3. Kindle'ı yeniden başlatın: **Menu → Settings → Menu → Restart**.
-4. Diagnostics menüsü açılır: **D) Exit, Reboot or Disable Diags → R) Reboot System → Q** (ileri tuşuyla onaylayın).
-5. Cihaz açılınca ekranda jailbreak mesajını görürsünüz. Kökteki dosyalar kendiliğinden silinir.
+1. **Kindle 4 jailbreak** paketini (`kindle-k4-jailbreak-*.zip`) indirip açın.
+2. Kindle'ı USB ile bağlayın. Paketteki `data.tar.gz`, `ENABLE_DIAGS` dosyasını ve
+   `diagnostic_logs` klasörünü Kindle'ın kök dizinine kopyalayın.
+3. **Menu → Settings → Menu → Restart**.
+4. Diagnostics menüsünde: **D) Exit, Reboot or Disable Diags → R) Reboot System → Q**.
+5. Açılışta jailbreak mesajı görünür. Kökteki dosyalar kendiliğinden silinir.
 
 ### 2.2 MKK + KUAL
 
-Kindle 4'te KUAL bir "Kindlet" olduğundan önce Kindlet anahtarı gerekir:
-
-1. **MKK (MobileRead Kindlet Kit)** paketinden K4 için olan `Update_mkk-*-k4-*.bin` dosyasını
-   Kindle'ın köküne kopyalayın → **Menu → Settings → Menu → Update Your Kindle**.
+1. **MKK (MobileRead Kindlet Kit)** paketindeki K4 dosyasını (`Update_mkk-*-k4-*.bin`) Kindle köküne
+   kopyalayın → **Menu → Settings → Menu → Update Your Kindle**.
 2. **KUAL** paketindeki `KUAL-KDK-1.0.azw2` dosyasını Kindle'daki `documents/` klasörüne kopyalayın.
    Kütüphanede "Kindle Launcher" olarak görünür.
 
-### 2.3 (İsteğe bağlı) USBNetwork
+### 2.3 Home Display eklentisi
 
-SSH ile bağlanıp log okumak isterseniz K4 için `Update_usbnetwork-*-k4-*.bin` kurun. Zorunlu değil.
-
-### 2.4 Home Display eklentisi
-
-1. Bu depodaki `kindle/extensions/homedisplay` klasörünü Kindle'daki `extensions/` klasörüne kopyalayın
-   (KUAL kurulduysa bu klasör vardır; yoksa oluşturun). Sonuç: `extensions/homedisplay/config.xml`.
-2. `extensions/homedisplay/config.sh` dosyasını açıp **`IMAGE_URL`** satırına sunucu adresinizi yazın.
-3. Kindle'da Wi-Fi'ye bağlanın.
-4. KUAL'ı açın → **Home Display → Tek seferlik yenile** ile görüntünün geldiğini kontrol edin.
+1. Depo → **Releases → "Kindle eklentisi"** → `homedisplay-kindle.zip` dosyasını indirin.
+   Bu paket `xh` dosyasını içerir. Depodaki `kindle/` klasöründe xh yoktur.
+2. Zip'i açın, içindeki `extensions` klasörünü Kindle'ın köküne kopyalayın (var olanla birleşsin).
+   Sonuç: `extensions/homedisplay/config.xml`, `extensions/homedisplay/bin/xh`.
+3. Kindle'da Wi-Fi'ye bağlanın. **Kindle'ın saati doğru olmalı**, yoksa HTTPS bağlantısı kurulamaz.
+4. KUAL → **Home Display → Tek seferlik yenile** ile görüntünün geldiğini kontrol edin.
 5. **Home Display → Başlat**.
 
-Başlattığınızda Kindle arayüzü durdurulur (çizdiğimiz görüntünün üstüne yazmasın diye) ve pano
-`REFRESH_SECONDS` aralıklarla yenilenir.
+Başlatınca Kindle arayüzü durdurulur (çizilen görüntünün üstüne yazmasın diye) ve pano 15 dakikada
+bir kontrol edilir. Görüntü değişmediyse ekran yeniden çizilmez.
 
-**Çıkış:** Home tuşuna basın, normal Kindle arayüzü geri gelir. Tepki vermezse güç düğmesini
-~20 sn basılı tutup bırakın; cihaz yeniden başlar ve normal haline döner (eklenti açılışta
-kendiliğinden çalışmaz).
+**Çıkış:** Home tuşuna basın. Tepki vermezse güç düğmesini ~20 sn basılı tutun; cihaz yeniden başlar
+ve normal haline döner (eklenti açılışta kendiliğinden çalışmaz).
 
----
-
-## 3. Ayarlar
-
-### Sunucu: `server/config.toml`
-
-| Bölüm | Ne işe yarar |
-|---|---|
-| `[display]` | Boyut, `rotate = 90` ile yatay kullanım, saat dilimi, alt köşedeki başlık |
-| `[weather]` | Enlem/boylam ve şehir adı. Koordinatı Google Maps'te sağ tıklayarak alabilirsiniz |
-| `[currency]` | Gösterilecek kurlar |
-| `[home_assistant]` | URL, uzun ömürlü erişim jetonu, `[etiket, entity_id]` listesi |
-| `[calendar]` | Bir veya birden çok gizli ICS adresi |
-| `[todo]` | `todo.txt` içindeki her satır bir madde; dosyayı düzenleyince bir sonraki yenilemede görünür |
-
-Sunucu `config.toml` dosyasını her istekte yeniden okur, yani yeniden başlatmanız gerekmez.
-Bir veri kaynağına ulaşılamazsa o bölüm atlanır ve hata alt satırda kısaca yazar. Ekran yine de güncellenir.
-
-### Kindle: `extensions/homedisplay/config.sh`
+### Kindle ayarları: `extensions/homedisplay/config.sh`
 
 | Ayar | Varsayılan | Açıklama |
 |---|---|---|
-| `IMAGE_URL` | — | Sunucudaki `display.png` adresi (**HTTP**) |
-| `REFRESH_SECONDS` | 300 | Yenileme aralığı |
-| `FULL_REFRESH_EVERY` | 6 | Kaç yenilemede bir ekran tam yenilenir (gölgeyi temizler) |
-| `WAIT_MODE` | `sleep` | `sleep`: cihaz uyanık kalır (şarja takılı kullanım). `suspend`: RTC alarmıyla uyur (deneysel) |
-| `NIGHT_HOURS` | `1-6` | Bu saatlerde yenileme yapılmaz (`23-5` gibi gece yarısını aşan aralık da olur) |
-| `WIFI_OFF_BETWEEN` | 0 | 1 yapılırsa Wi-Fi yenilemeler arasında kapatılır |
-| `LOW_BATTERY` | 15 | Pil bu yüzdenin altına inince köşede uyarı gösterilir |
+| `IMAGE_URL` | raw.githubusercontent… | Görüntünün adresi |
+| `REFRESH_SECONDS` | 900 | Kontrol aralığı |
+| `FULL_REFRESH_EVERY` | 6 | Kaç güncellemede bir tam yenileme (gölgeyi temizler) |
+| `WAIT_MODE` | `sleep` | `sleep`: cihaz uyanık kalır (şarja takılı kullanım). `suspend`: RTC ile uyur (deneysel) |
+| `NIGHT_HOURS` | `0-6` | Bu saatlerde yenileme yapılmaz |
+| `WIFI_OFF_BETWEEN` | 0 | 1 yapılırsa Wi-Fi kontroller arasında kapanır |
+| `LOW_BATTERY` | 15 | Pil bu yüzdenin altına inince köşede uyarı çıkar |
 
-**Pil:** `sleep` modunda Kindle 4 şarjsız birkaç gün dayanır. Duvarda kalıcı kullanım için USB
-şarja takılı tutmanız önerilir. Şarjsız kullanacaksanız `WIFI_OFF_BETWEEN=1` ve
-`REFRESH_SECONDS=900` iyi bir başlangıç olur.
+**Pil:** Duvarda kalıcı kullanım için USB şarja takılı tutun. Şarjsız kullanacaksanız
+`WIFI_OFF_BETWEEN=1` ile birkaç gün dayanır.
 
 ---
 
-## 4. Sorun giderme
+## 3. Sorun giderme
 
-- **Log:** Kindle'da `/tmp/homedisplay.log` (USBNetwork ile `ssh root@192.168.15.244`).
-- **"Sunucuya ulasilamadi"**: Kindle'ın tarayıcısında `IMAGE_URL` adresini açmayı deneyin.
-  Aynı ağda mı? Sunucunun güvenlik duvarı 8080 portuna izin veriyor mu?
-- **HTTPS adres verdim, çalışmıyor**: Kindle 4'ün `wget`'i güncel TLS'i desteklemez, yerel HTTP kullanın.
-- **Gri tonlar bozuk / görüntü kaymış**: PNG 600×800 ve 8-bit gri olmalı; sunucu bunu otomatik üretir.
-  `rotate` kullanıyorsanız çıktı yine 600×800'dür.
-- **`suspend` modunda uyanmıyor**: `RTC_DEV` değerini `/sys/class/rtc/rtc0` yapın ya da `sleep` moduna dönün.
+- **Log:** Kindle'da `/tmp/homedisplay.log`.
+- **"Sunucuya ulasilamadi":** Kindle saati yanlışsa HTTPS başarısız olur. Ayarlardan saati düzeltin.
+  `bin/xh` dosyasının yerinde olduğunu kontrol edin.
+- **Alt satırda "alınamadı: …":** O veri kaynağı o an yanıt vermemiş demektir. Pano yine çizilir.
+  Ayrıntı için Actions → render → son çalıştırmanın loguna bakın.
+- **Görüntü eski:** Actions sekmesinde render iş akışının çalıştığını kontrol edin.
+
+## Alternatif: yerel sunucu
+
+Evde sürekli açık bir makine varsa bulut yerine onu da kullanabilirsiniz:
+`pip install -r server/requirements.txt && python3 server/home_display.py serve` (ya da `docker compose up -d`).
+Kindle'daki `IMAGE_URL` değerini `http://<ip>:8080/display.png` yapın.
 
 ## Dosya yapısı
 
 ```
 server/
-  home_display.py         görüntü üretici + HTTP sunucu
-  config.example.toml     örnek ayarlar (config.toml olarak kopyalayın)
-  todo.example.txt
-  Dockerfile, home-display.service
-docker-compose.yml
-kindle/extensions/homedisplay/   KUAL eklentisi (Kindle'daki extensions/ içine)
-  config.sh               Kindle tarafı ayarlar
-  bin/start.sh stop.sh once.sh loop.sh common.sh keywatch.sh
+  home_display.py      veri toplama + çizim (+ isteğe bağlı yerel HTTP sunucu)
+  local_data.py        mevsim meyve/sebze/balık, Kadıköy semt pazarları, ay evresi
+  config.toml          ayarlar (herkese açık, gizli bilgi yazmayın)
+  todo.txt             yapılacaklar
+.github/workflows/
+  render.yml           her 30 dk panoyu üretip display dalına yazar
+  kindle-package.yml   Kindle eklentisini xh ile paketleyip Releases'e koyar
+kindle/extensions/homedisplay/   KUAL eklentisi
 ```

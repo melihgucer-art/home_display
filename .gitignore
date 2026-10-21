@@ -1,6 +1,4 @@
 __pycache__/
 *.pyc
-server/config.toml
-server/todo.txt
 server/out/
 .venv/

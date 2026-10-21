@@ -19,6 +19,21 @@ wifi_on() {
 
 wifi_off() { lipc-set-prop com.lab126.cmd wirelessEnable 0 2>/dev/null; }
 
+# HTTPS için bin/xh (pascalw/kindle-dash paketindeki modern HTTP istemcisi), yoksa wget/curl
+download() {
+    url="$1"; out="$2"
+    case "$url" in
+        https://*)
+            if [ -x "$DIR/bin/xh" ]; then
+                "$DIR/bin/xh" -d -q -o "$out" get "$url"
+                return $?
+            fi
+            log "UYARI: bin/xh yok, HTTPS büyük olasılıkla başarısız olacak"
+            ;;
+    esac
+    wget -q -T 30 -O "$out" "$url" 2>/dev/null || curl -s -m 30 -o "$out" "$url"
+}
+
 battery() { lipc-get-prop com.lab126.powerd battLevel 2>/dev/null || gasgauge-info -c 2>/dev/null | tr -dc 0-9; }
 
 # $1 = 1 ise tam yenileme
@@ -29,7 +44,14 @@ refresh() {
         eips 1 38 "Wi-Fi yok" >/dev/null 2>&1
         return 1
     fi
-    if wget -q -T 20 -O "$IMG.tmp" "$IMAGE_URL" && [ -s "$IMG.tmp" ]; then
+    if download "$IMAGE_URL" "$IMG.tmp" && [ -s "$IMG.tmp" ]; then
+        if [ "$full" != 1 ] && [ -f "$IMG" ] && \
+           [ "$(md5sum < "$IMG.tmp")" = "$(md5sum < "$IMG")" ]; then
+            rm -f "$IMG.tmp"
+            log "görüntü değişmemiş"
+            [ "$WIFI_OFF_BETWEEN" = 1 ] && wifi_off
+            return 0
+        fi
         mv "$IMG.tmp" "$IMG"
         if [ "$full" = 1 ]; then
             eips -c >/dev/null 2>&1

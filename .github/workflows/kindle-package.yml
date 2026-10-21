@@ -1,0 +1,33 @@
+# Kindle eklentisini xh (modern HTTPS istemcisi, pascalw/kindle-dash'ten) ile birlikte
+# paketleyip "kindle" sürümüne yükler. Kullanıcı tek zip indirip Kindle'a kopyalar.
+name: kindle-package
+on:
+  workflow_dispatch:
+  push:
+    paths: ["kindle/**", ".github/workflows/kindle-package.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: xh'yi al
+        run: |
+          gh release download v1.0.0-beta.4 -R pascalw/kindle-dash -p '*.tgz' -D kd
+          mkdir kdx && tar xzf kd/*.tgz -C kdx
+          cp kdx/xh kindle/extensions/homedisplay/bin/xh
+          chmod +x kindle/extensions/homedisplay/bin/*
+      - name: Paketle
+        run: |
+          cd kindle
+          zip -qr ../homedisplay-kindle.zip extensions
+      - name: Sürüme yükle
+        run: |
+          gh release view kindle >/dev/null 2>&1 || \
+            gh release create kindle --title "Kindle eklentisi" --notes "extensions klasörünü Kindle'ın köküne kopyalayın. README'ye bakın." --target "${{ github.sha }}"
+          gh release upload kindle homedisplay-kindle.zip --clobber

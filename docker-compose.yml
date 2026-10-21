@@ -5,5 +5,5 @@ services:
       - "8080:8080"
     volumes:
       - ./server/config.toml:/app/config.toml:ro
-      - ./server/todo.txt:/app/todo.txt
+      - ./server/todo.txt:/app/todo.txt:ro
     restart: unless-stopped

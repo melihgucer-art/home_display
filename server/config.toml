@@ -1,0 +1,35 @@
+# Home Display ayarları (Erenköy / Kadıköy).
+# Bu depo herkese açık: buraya gizli bilgi (jeton, özel takvim adresi) YAZMAYIN.
+# Özel takvim adresi için GitHub > Settings > Secrets > Actions > CALENDAR_ICS_URLS kullanın.
+
+[display]
+width = 600          # Kindle 4: 600x800
+height = 800
+rotate = 0           # 0 = dikey; 90 / 270 = yatay asarsanız
+title = "Ev"
+timezone = "Europe/Istanbul"
+
+[location]
+name = "Erenköy · Kadıköy"
+latitude = 40.9736
+longitude = 29.0770
+# Deniz suyu sıcaklığı için Caddebostan açığı
+sea_name = "Caddebostan"
+sea_latitude = 40.955
+sea_longitude = 29.06
+
+[tiles]
+air = true           # hava kalitesi (Open-Meteo)
+sea = true           # deniz suyu sıcaklığı (Open-Meteo Marine)
+finance = true       # dolar, euro, gram altın (truncgil)
+pharmacy = true      # Kadıköy nöbetçi eczaneleri, en yakın ikisi (nobetcieczane.org)
+
+[todo]
+# Her satır bir madde. GitHub uygulamasından düzenleyebilirsiniz; '#' ile başlayan satırlar yok sayılır.
+file = "todo.txt"
+
+[server]
+# Yalnızca yerel sunucu modunda (python3 home_display.py serve) kullanılır
+host = "0.0.0.0"
+port = 8080
+cache_seconds = 300
