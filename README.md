@@ -76,6 +76,15 @@ Gerekli dosyalar MobileRead'deki NiLuJe dizinindedir:
 
 > KUAL'ın eski geliştirici sertifikasının süresi **17 Nisan 2025'te doldu**. Sertifika güncellemesi
 > yapılmazsa KUAL "not signed by an authorized developer" ya da "permissions have expired" hatası verir.
+>
+> **Yeni sertifika yalnızca 4.1.4'te çalışır.** Kindle'ınız daha eskiyse önce Amazon'un resmi
+> güncellemelerini sırayla kurun (4.1.1 → [4.1.2](https://s3.amazonaws.com/G7G_FirmwareUpdates_WebDownloads/Update_kindle_4.1.2.bin)
+> → [4.1.3](https://s3.amazonaws.com/G7G_FirmwareUpdates_WebDownloads/Update_kindle_4.1.3.bin)
+> → [4.1.4](https://firmwareupdates.s3.amazonaws.com/1435/Update_2692310002-3543630001.bin)), Wi-Fi kapalıyken.
+> Ardından jailbreak'i tekrarlayın.
+>
+> **Wi-Fi'yi açmadan önce** KUAL → Home Display → **Amazon'u engelle** çalıştırın. Kayıtsız bir
+> Kindle'da Wi-Fi açılınca Amazon sertifikayı siler. Engel saat sunucularına dokunmaz, saat doğru kalır.
 
 Gerekenlerin hepsi depo → **Releases → "Kindle eklentisi"** → **`kindle-kurulum.zip`** içinde numaralı
 klasörler halinde duruyor (bkz. `OKU-BENI.txt`). Her adımda dosyayı Kindle'a kopyalayın, ⏏ ile çıkarın,
@@ -84,7 +93,7 @@ sonra Kindle'da işlemi yapın:
 1. `1-MKK/Update_mkk-20141129-k4-ALL_install.bin` → Kindle köküne → **Menu → Settings → Menu → Update Your Kindle**.
 2. `2-Sertifika/Update_mkk-20250419-k4-ALL_keystore-install.bin` → Kindle köküne → **Update Your Kindle**.
 3. `3-KUAL/KUAL-KDK-1.0.azw2` → Kindle'daki `documents/` klasörüne. Kütüphanede "Kindle Launcher" olarak görünür.
-4. (Önerilir) `5-Guncelleme-Engeli/update.bin.tmp.partial` klasörü → Kindle köküne. Amazon'un otomatik
+4. `5-Guncelleme-Engeli/update.bin.tmp.partial` klasörü → Kindle köküne. Amazon'un otomatik
    güncellemesi jailbreak'i silmesin diye.
 
 Dosyaların kaynağı NiLuJe'nin MobileRead paylaşımlarıdır

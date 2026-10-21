@@ -4,9 +4,31 @@
       "name": "Home Display",
       "priority": 0,
       "items": [
-        {"name": "Başlat", "priority": 1, "action": "bin/start.sh"},
-        {"name": "Durdur", "priority": 2, "action": "bin/stop.sh"},
-        {"name": "Tek seferlik yenile", "priority": 3, "action": "bin/once.sh"}
+        {
+          "name": "Başlat",
+          "priority": 1,
+          "action": "bin/start.sh"
+        },
+        {
+          "name": "Durdur",
+          "priority": 2,
+          "action": "bin/stop.sh"
+        },
+        {
+          "name": "Tek seferlik yenile",
+          "priority": 3,
+          "action": "bin/once.sh"
+        },
+        {
+          "name": "Amazon'u engelle (Wi-Fi'den önce)",
+          "priority": 4,
+          "action": "bin/amazon-block.sh"
+        },
+        {
+          "name": "Amazon engelini kaldır",
+          "priority": 5,
+          "action": "bin/amazon-unblock.sh"
+        }
       ]
     }
   ]

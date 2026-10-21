@@ -306,3 +306,48 @@ def test_default_config_values():
     text = (EXT / "config.sh").read_text()
     assert 'IMAGE_URL="https://raw.githubusercontent.com/melihgucer-art/home_display/display/display.png"' in text
     assert "REFRESH_SECONDS=3600" in text
+
+
+ORIGINAL_HOSTS = "127.0.0.1 localhost\n::1 localhost\n192.168.1.5 nas\n"
+
+
+def _run_hosts(kindle, script, hosts):
+    env = {"PATH": f"{kindle.stub}:{os.environ['PATH']}", "HOSTS": str(hosts)}
+    return subprocess.run(kindle.shell + [str(kindle.ext / "bin" / script)], capture_output=True, text=True,
+                          env=env, timeout=20)
+
+
+def test_amazon_block_adds_once_and_keeps_time_servers(kindle):
+    hosts = kindle.tmpdir / "hosts"
+    hosts.write_text(ORIGINAL_HOSTS)
+    for _ in range(2):  # iki kez çalıştırmak çift kayıt üretmemeli
+        assert _run_hosts(kindle, "amazon-block.sh", hosts).returncode == 0
+    text = hosts.read_text()
+    assert text.startswith(ORIGINAL_HOSTS)
+    assert text.count("# BEGIN homedisplay_block_amazon") == 1
+    assert "127.0.0.1 todo-g7g.amazon.com" in text and "127.0.0.1 det-g7g.amazon.com" in text
+    assert "kindle-time" not in text and "ntp" not in text, "saat sunucuları engellenmemeli"
+    assert "github" not in text
+    assert any("Amazon engellendi" in l for l in kindle.eips())
+    assert any("zaten engelli" in l for l in kindle.eips())
+
+
+def test_amazon_unblock_restores_original(kindle):
+    hosts = kindle.tmpdir / "hosts"
+    hosts.write_text(ORIGINAL_HOSTS)
+    _run_hosts(kindle, "amazon-block.sh", hosts)
+    assert _run_hosts(kindle, "amazon-unblock.sh", hosts).returncode == 0
+    assert hosts.read_text() == ORIGINAL_HOSTS
+    assert not (kindle.tmpdir / "hosts.tmp").exists()
+    # engel yokken kaldırmak zararsız olmalı
+    assert _run_hosts(kindle, "amazon-unblock.sh", hosts).returncode == 0
+    assert hosts.read_text() == ORIGINAL_HOSTS
+
+
+def test_amazon_block_remounts_root(kindle):
+    hosts = kindle.tmpdir / "hosts"
+    hosts.write_text(ORIGINAL_HOSTS)
+    _exe(kindle.stub / "mntroot", f'echo "mntroot $*" >> "{kindle.calls}"\n')
+    _run_hosts(kindle, "amazon-block.sh", hosts)
+    mounts = [l for l in kindle.log() if l.startswith("mntroot")]
+    assert mounts == ["mntroot rw", "mntroot ro"]
