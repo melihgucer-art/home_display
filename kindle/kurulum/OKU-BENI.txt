@@ -1,0 +1,57 @@
+KINDLE 4 KURULUM PAKETİ
+=======================
+
+Her adımda aynı döngü: Kindle'ı Mac'e tak -> dosyayı Kindle'a sürükle ->
+Finder'da Kindle'ın yanındaki ⏏ ile çıkar -> kabloyu çek -> Kindle'da işlemi yap.
+
+"Update Your Kindle" adımlarında Kindle'ın en üst klasöründe aynı anda yalnızca
+BİR .bin dosyası olsun.
+
+0) Önce: Kindle yazılımı 4.1.4 olmalı
+   Menu -> Settings ekranının sağ altında sürüm yazar. 4.1.4 değilse
+   Amazon'un resmi dosyalarını sırayla kurun (4.1.1'den başlıyorsanız üçü de):
+     4.1.2: https://s3.amazonaws.com/G7G_FirmwareUpdates_WebDownloads/Update_kindle_4.1.2.bin
+     4.1.3: https://s3.amazonaws.com/G7G_FirmwareUpdates_WebDownloads/Update_kindle_4.1.3.bin
+     4.1.4: https://firmwareupdates.s3.amazonaws.com/1435/Update_2692310002-3543630001.bin
+   Her biri: dosyayı Kindle'ın içine sürükle -> ⏏ -> Menu -> Settings -> Menu ->
+   Update Your Kindle -> yeniden açılmasını bekle -> eski .bin dosyasını sil.
+   Bu sırada Wi-Fi KAPALI olsun (Menu -> Turn Wireless Off).
+   4.1.4 olduktan sonra jailbreak'i bir kez daha yapın (jailbreak dosyaları + D, R, Q).
+
+1) MKK
+   1-MKK klasöründeki .bin dosyasını Kindle'ın İÇİNE (en üst klasöre) sürükle.
+   Kindle'da: Menu -> Settings -> Menu -> Update Your Kindle -> onayla.
+
+2) Sertifika güncellemesi (2025)
+   Önceki .bin dosyasını sil, 2-Sertifika klasöründeki .bin dosyasını Kindle'ın
+   İÇİNE sürükle. Kindle'da yine: Update Your Kindle.
+
+3) KUAL
+   3-KUAL klasöründeki KUAL-KDK-1.0.azw2 dosyasını Kindle'daki "documents"
+   klasörüne sürükle. Kütüphanede "Kindle Launcher" / "KUAL" olarak görünür.
+
+4) Home Display
+   4-HomeDisplay/extensions içindeki "homedisplay" klasörünü Kindle'daki
+   "extensions" klasörüne sürükle (Kindle'da extensions yoksa extensions
+   klasörünün tamamını sürükle).
+
+5) Güncelleme engeli
+   5-Guncelleme-Engeli klasöründeki "update.bin.tmp.partial" klasörünü
+   Kindle'ın İÇİNE sürükle. Amazon'un otomatik güncellemesi jailbreak'i silmesin diye.
+
+6) Wi-Fi'yi açmadan önce
+   KUAL'ı aç -> Home Display -> "Amazon'u engelle (Wi-Fi'den önce)".
+   Wi-Fi açıkken Amazon, KUAL'ın sertifikasını siler; bu engel bunu önler.
+   (Saat sunucuları engellenmez, saat doğru kalır.)
+
+7) Çalıştır
+   Wi-Fi'yi aç, saatin doğru olduğunu kontrol et.
+   KUAL -> Home Display -> Tek seferlik yenile. Pano gelirse -> Başlat.
+
+Kaynaklar (hepsi ücretsiz, MobileRead topluluğu):
+- MKK ve KUAL: NiLuJe'nin anlık görüntüleri
+  https://www.mobileread.com/forums/showthread.php?t=225030
+- 2025 sertifika güncellemesi (DevCerts-20250419-KeyStore):
+  https://www.mobileread.com/forums/showpost.php?p=4506164&postcount=1295
+- Amazon engelleme fikri ve sunucu listesi: LunarEclipse/kindle-block-amazon
+- xh: https://github.com/pascalw/kindle-dash

@@ -1,0 +1,68 @@
+# Kindle eklentisini xh (modern HTTPS istemcisi, pascalw/kindle-dash'ten) ile birlikte
+# paketleyip "kindle" sürümüne yükler. Kullanıcı tek zip indirip Kindle'a kopyalar.
+#
+# Ayrıca jailbreak sonrası gereken her şeyi (MKK, 2025 sertifika güncellemesi, KUAL)
+# toplayıp numaralı klasörlerle "kindle-kurulum.zip" olarak yükler.
+name: kindle-package
+on:
+  workflow_dispatch:
+  push:
+    paths: ["kindle/**", ".github/workflows/kindle-package.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: xh'yi al
+        run: |
+          gh release download v1.0.0-beta.4 -R pascalw/kindle-dash -p '*.tgz' -D kd
+          mkdir kdx && tar xzf kd/*.tgz -C kdx
+          cp kdx/xh kindle/extensions/homedisplay/bin/xh
+          chmod +x kindle/extensions/homedisplay/bin/*
+      - name: Paketle
+        run: |
+          cd kindle
+          zip -qr ../homedisplay-kindle.zip extensions
+      - name: Kurulum araçlarını al (MKK, sertifika, KUAL)
+        run: |
+          set -eu
+          B=https://storage.gra.cloud.ovh.net/v1/AUTH_2ac4bfee353948ec8ea7fd1710574097/mr-public
+          mkdir -p tools && cd tools
+          curl -fsSL -o mkk.tar.xz "$B/Touch/kindle-mkk-20141129-r18833.tar.xz"
+          echo "8af8c2a4cbdf6a9f4a45a63bb4c4dd02  mkk.tar.xz" | md5sum -c -
+          curl -fsSL -o kual.tar.xz "$B/KUAL/KUAL-v2.7.37-gfcb45b5-20250419.tar.xz"
+          mkdir mkk kual && tar xJf mkk.tar.xz -C mkk && tar xJf kual.tar.xz -C kual
+          # 2025 sertifika güncellemesi MobileRead'deki bir forum ekinde
+          curl -fsSL -A "Mozilla/5.0" -o post.html "https://www.mobileread.com/forums/showpost.php?p=4506164&postcount=1295"
+          att=$(grep -oE 'attachment\.php\?[^"]*attachmentid=[0-9]+[^"]*' post.html | head -1 | sed 's/&amp;/\&/g')
+          echo "ek: $att"
+          curl -fsSL -A "Mozilla/5.0" -o devcerts.zip "https://www.mobileread.com/forums/$att"
+          file devcerts.zip | grep -q "Zip archive"
+          mkdir devcerts && unzip -q devcerts.zip -d devcerts
+          find mkk kual devcerts -type f | sort
+      - name: Kurulum paketini hazırla
+        run: |
+          set -eu
+          K=kindle-kurulum
+          mkdir -p $K/1-MKK $K/2-Sertifika $K/3-KUAL $K/4-HomeDisplay $K/5-Guncelleme-Engeli/update.bin.tmp.partial
+          one() { n=$(find tools/$1 -type f -iname "$2" | wc -l); [ "$n" = 1 ] || { echo "$2: $n eşleşme"; find tools/$1 -type f; exit 1; }; find tools/$1 -type f -iname "$2"; }
+          cp "$(one mkk 'Update_mkk-*k4*_install.bin')" $K/1-MKK/
+          cp "$(one devcerts '*mkk-20250419-k4*keystore*.bin')" $K/2-Sertifika/
+          cp "$(one kual 'KUAL-KDK-1.0.azw2')" $K/3-KUAL/
+          cp -R kindle/extensions $K/4-HomeDisplay/
+          touch $K/5-Guncelleme-Engeli/update.bin.tmp.partial/.bos
+          cp kindle/kurulum/OKU-BENI.txt $K/
+          (cd $K && find . -type f -not -name '.bos' -not -name MD5SUMS.txt -exec md5sum {} \; | sort -k2 > MD5SUMS.txt)
+          cat $K/MD5SUMS.txt
+          zip -qr kindle-kurulum.zip $K
+      - name: Sürüme yükle
+        run: |
+          gh release view kindle >/dev/null 2>&1 || \
+            gh release create kindle --title "Kindle eklentisi" --notes "extensions klasörünü Kindle'ın köküne kopyalayın. README'ye bakın." --target "${{ github.sha }}"
+          gh release upload kindle homedisplay-kindle.zip kindle-kurulum.zip --clobber

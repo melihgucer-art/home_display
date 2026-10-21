@@ -1,0 +1,26 @@
+# Home Display ayarları (Erenköy / Kadıköy).
+# Bu depo herkese açık: buraya gizli bilgi yazmayın.
+
+[display]
+width = 600          # Kindle 4: 600x800
+height = 800
+timezone = "Europe/Istanbul"
+
+[location]
+name = "Erenköy · Kadıköy"
+latitude = 40.9736
+longitude = 29.0770
+# Nöbetçi eczanelerin uzaklık ve yönü bu noktaya göre gösterilir
+home_name = "Çelebi Sk."
+home_latitude = 40.97016
+home_longitude = 29.08219
+# Deniz suyu sıcaklığı için Caddebostan açığı
+sea_name = "Caddebostan"
+sea_latitude = 40.955
+sea_longitude = 29.06
+
+[tiles]
+air = true           # hava kalitesi (Open-Meteo)
+sea = true           # deniz suyu sıcaklığı (Open-Meteo Marine)
+finance = true       # dolar, euro, gram altın (truncgil)
+pharmacy = true      # Kadıköy nöbetçi eczaneleri, en yakın ikisi (nobetcieczane.org)

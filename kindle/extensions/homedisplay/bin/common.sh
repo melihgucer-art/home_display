@@ -1,11 +1,41 @@
 #!/bin/sh
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 . "$DIR/config.sh"
+# KUAL betikleri kısıtlı bir PATH ile çalıştırabiliyor; eips /usr/sbin altında
+PATH="$PATH:/usr/sbin:/usr/bin:/sbin:/bin"
+export PATH
+# Kindle saati UTC tutar; gece saatleri ve log için Türkiye saati (UTC+3, yaz saati yok)
+TZ="${TZ:-TRT-3}"
+export TZ
+
+# Kindle 4'ün eski busybox kabuğu "command -v"yi desteklemeyebilir
+have() {
+    command -v "$1" >/dev/null 2>&1 || which "$1" >/dev/null 2>&1 || type "$1" >/dev/null 2>&1
+}
 PIDFILE=/tmp/homedisplay.pid
 IMG=/tmp/homedisplay.png
-LOG=/tmp/homedisplay.log
+# Log USB belleğe yazılır: Mac'ten Kindle/extensions/homedisplay/homedisplay.log olarak okunabilir
+LOG="$DIR/homedisplay.log"
 
-log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
+# Arka planda, oturumdan bağımsız çalıştır (Kindle'da nohup her zaman bulunmayabilir)
+# İç içe alt kabuk: süreç hemen init'e devredilir, KUAL betiği bitirip süreç grubunu kapatsa da yaşar.
+bg() {
+    if have setsid; then
+        ( setsid "$@" >> "$LOG" 2>&1 < /dev/null & ) &
+    elif have nohup; then
+        ( nohup "$@" >> "$LOG" 2>&1 < /dev/null & ) &
+    else
+        ( "$@" >> "$LOG" 2>&1 < /dev/null & ) &
+    fi
+}
+
+log() {
+    # 100 KB'ı geçerse son kısmı tut
+    if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 102400 ]; then
+        tail -n 200 "$LOG" > "$LOG.old" && mv "$LOG.old" "$LOG"
+    fi
+    echo "$(date '+%F %T') $*" >> "$LOG"
+}
 
 wifi_on() {
     lipc-set-prop com.lab126.cmd wirelessEnable 1 2>/dev/null
@@ -19,25 +49,50 @@ wifi_on() {
 
 wifi_off() { lipc-set-prop com.lab126.cmd wirelessEnable 0 2>/dev/null; }
 
+# HTTPS için bin/xh (pascalw/kindle-dash paketindeki modern HTTP istemcisi), yoksa wget/curl
+download() {
+    url="$1"; out="$2"
+    case "$url" in
+        https://*)
+            if [ -x "$DIR/bin/xh" ]; then
+                "$DIR/bin/xh" -d -q -o "$out" get "$url" 2>> "$LOG"
+                rc=$?
+                [ $rc -ne 0 ] && log "xh hata kodu $rc (saat yanlışsa HTTPS kurulamaz: $(date))"
+                return $rc
+            fi
+            log "UYARI: bin/xh yok, HTTPS büyük olasılıkla başarısız olacak"
+            ;;
+    esac
+    wget -q -T 30 -O "$out" "$url" 2>/dev/null || curl -s -m 30 -o "$out" "$url"
+}
+
 battery() { lipc-get-prop com.lab126.powerd battLevel 2>/dev/null || gasgauge-info -c 2>/dev/null | tr -dc 0-9; }
 
 # $1 = 1 ise tam yenileme
 refresh() {
     full="$1"
+    have eips || log "UYARI: eips bulunamadı (PATH=$PATH)"
     if ! wifi_on; then
         log "wifi bağlanamadı"
         eips 1 38 "Wi-Fi yok" >/dev/null 2>&1
         return 1
     fi
-    if wget -q -T 20 -O "$IMG.tmp" "$IMAGE_URL" && [ -s "$IMG.tmp" ]; then
+    if download "$IMAGE_URL" "$IMG.tmp" && [ -s "$IMG.tmp" ]; then
+        if [ "$full" != 1 ] && [ -f "$IMG" ] && \
+           [ "$(md5sum < "$IMG.tmp")" = "$(md5sum < "$IMG")" ]; then
+            rm -f "$IMG.tmp"
+            log "görüntü değişmemiş"
+            [ "$WIFI_OFF_BETWEEN" = 1 ] && wifi_off
+            return 0
+        fi
         mv "$IMG.tmp" "$IMG"
         if [ "$full" = 1 ]; then
             eips -c >/dev/null 2>&1
-            eips -f -g "$IMG" >/dev/null 2>&1
+            eips -f -g "$IMG" >> "$LOG" 2>&1
         else
-            eips -g "$IMG" >/dev/null 2>&1
+            eips -g "$IMG" >> "$LOG" 2>&1
         fi
-        log "görüntü güncellendi"
+        log "görüntü güncellendi ($(wc -c < "$IMG") bayt, eips çıkış kodu $?)"
     else
         rm -f "$IMG.tmp"
         log "indirme başarısız: $IMAGE_URL"
