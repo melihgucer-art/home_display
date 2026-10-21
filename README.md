@@ -72,18 +72,31 @@ Gerekli dosyalar MobileRead'deki NiLuJe dizinindedir:
 4. Diagnostics menüsünde: **D) Exit, Reboot or Disable Diags → R) Reboot System → Q**.
 5. Açılışta jailbreak mesajı görünür. Kökteki dosyalar kendiliğinden silinir.
 
-### 2.2 MKK + KUAL
+### 2.2 MKK, sertifika güncellemesi ve KUAL
 
-1. **MKK (MobileRead Kindlet Kit)** paketindeki K4 dosyasını (`Update_mkk-*-k4-*.bin`) Kindle köküne
-   kopyalayın → **Menu → Settings → Menu → Update Your Kindle**.
-2. **KUAL** paketindeki `KUAL-KDK-1.0.azw2` dosyasını Kindle'daki `documents/` klasörüne kopyalayın.
-   Kütüphanede "Kindle Launcher" olarak görünür.
+> KUAL'ın eski geliştirici sertifikasının süresi **17 Nisan 2025'te doldu**. Sertifika güncellemesi
+> yapılmazsa KUAL "not signed by an authorized developer" ya da "permissions have expired" hatası verir.
+
+Gerekenlerin hepsi depo → **Releases → "Kindle eklentisi"** → **`kindle-kurulum.zip`** içinde numaralı
+klasörler halinde duruyor (bkz. `OKU-BENI.txt`). Her adımda dosyayı Kindle'a kopyalayın, ⏏ ile çıkarın,
+sonra Kindle'da işlemi yapın:
+
+1. `1-MKK/Update_mkk-20141129-k4-ALL_install.bin` → Kindle köküne → **Menu → Settings → Menu → Update Your Kindle**.
+2. `2-Sertifika/Update_mkk-20250419-k4-ALL_keystore-install.bin` → Kindle köküne → **Update Your Kindle**.
+3. `3-KUAL/KUAL-KDK-1.0.azw2` → Kindle'daki `documents/` klasörüne. Kütüphanede "Kindle Launcher" olarak görünür.
+4. (Önerilir) `5-Guncelleme-Engeli/update.bin.tmp.partial` klasörü → Kindle köküne. Amazon'un otomatik
+   güncellemesi jailbreak'i silmesin diye.
+
+Dosyaların kaynağı NiLuJe'nin MobileRead paylaşımlarıdır
+([anlık görüntüler](https://www.mobileread.com/forums/showthread.php?t=225030),
+[2025 sertifikası](https://www.mobileread.com/forums/showpost.php?p=4506164&postcount=1295)).
+Paket her oluşturulduğunda MKK'nın MD5'i doğrulanır.
 
 ### 2.3 Home Display eklentisi
 
-1. Depo → **Releases → "Kindle eklentisi"** → `homedisplay-kindle.zip` dosyasını indirin
-   (içinde `xh` hazır gelir).
-2. Zip'i açın, içindeki `extensions` klasörünü Kindle'ın köküne kopyalayın.
+1. `kindle-kurulum.zip` içindeki `4-HomeDisplay` klasörünü açın (ya da yalnızca eklenti için
+   `homedisplay-kindle.zip`'i kullanın; ikisinde de `xh` hazır gelir).
+2. İçindeki `extensions` klasörünü Kindle'ın köküne kopyalayın.
    Sonuç: `extensions/homedisplay/config.xml` ve `extensions/homedisplay/bin/xh`.
 3. Kindle'da Wi-Fi'ye bağlanın. **Kindle'ın saati doğru olmalı**, yoksa HTTPS bağlantısı kurulamaz.
 4. KUAL → **Home Display → Tek seferlik yenile** ile görüntünün geldiğini kontrol edin.
