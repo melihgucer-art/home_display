@@ -78,7 +78,7 @@ def fetch_weather(loc: dict) -> dict:
         "https://api.open-meteo.com/v1/forecast",
         latitude=loc["latitude"], longitude=loc["longitude"],
         current="temperature_2m,apparent_temperature,relative_humidity_2m,"
-                "weather_code,wind_speed_10m,wind_direction_10m",
+                "weather_code,wind_speed_10m,wind_direction_10m,is_day",
         daily="weather_code,temperature_2m_max,temperature_2m_min,"
               "precipitation_probability_max,sunrise,sunset,uv_index_max",
         timezone="Europe/Istanbul", forecast_days=4,
@@ -250,8 +250,16 @@ def ellipsize(draw, text: str, f, width: int) -> str:
     return text + "…"
 
 
-def weather_icon(draw: ImageDraw.ImageDraw, code: int, x: float, y: float, s: float) -> None:
+def weather_icon(draw: ImageDraw.ImageDraw, code: int, x: float, y: float, s: float,
+                 night: bool = False) -> None:
     lw = max(2, int(s // 25))
+
+    if night and code in (0, 1):
+        r = s * 0.28
+        cx, cy = x + s / 2, y + s / 2
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=0)
+        draw.ellipse([cx - r * 0.45, cy - r * 1.1, cx + r * 1.35, cy + r * 0.7], fill=255)
+        return
 
     def sun(cx, cy, r):
         draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=0, width=lw)
@@ -365,7 +373,7 @@ def render(cfg: dict) -> Image.Image:
     # --- hava durumu
     if weather:
         cur, daily = weather["current"], weather["daily"]
-        weather_icon(d, cur["weather_code"], M, y, 112)
+        weather_icon(d, cur["weather_code"], M, y, 112, night=not cur.get("is_day", 1))
         d.text((M + 128, y - 6), f"{round(cur['temperature_2m'])}°", font=font(84, True), fill=0)
         d.text((M + 132, y + 92), WMO.get(cur["weather_code"], ""), font=font(21), fill=0)
         lines = [
@@ -457,8 +465,9 @@ def render(cfg: dict) -> Image.Image:
     if pharmacies:
         for i, e in enumerate(pharmacies):
             name = re.sub(r"(?i)\s+eczanes[iİ]$", "", e["ad"]).strip()
-            dist = f", {e['km']:.1f} km" if e["km"] is not None else ""
-            rows.append(("Eczane" if i == 0 else "", f"{name} ({e['semt']}{dist}) {e['tel']}"))
+            dist = f" {fmt_tr(e['km'], 1)} km" if e["km"] is not None else ""
+            tel = re.sub(r"^0\s*\((\d{3})\)\s*", r"0\1 ", e["tel"])
+            rows.append(("Eczane" if i == 0 else "", f"{name}, {e['semt']}{dist} · {tel}"))
     if holiday:
         hday, hname = holiday
         left = (hday - today).days
