@@ -444,7 +444,9 @@ def render_report(cfg: dict) -> tuple[Image.Image, list[str]]:
     if days and days[0]["sunrise"] and days[0]["sunset"]:
         d.text((W - M, 38), f"Gün doğumu {days[0]['sunrise']} · Batımı {days[0]['sunset']}",
                font=font(16), fill=255, anchor="ra")
-    d.text((W - M, 58), local_data.ay_evresi(today), font=font(16), fill=255, anchor="ra")
+    # Panonun çizildiği an: Kindle'daki görüntünün ne kadar taze olduğu anlaşılsın
+    d.text((W - M, 58), f"{local_data.ay_evresi(today)} · Güncelleme {now:%H:%M}", font=font(16), fill=255,
+           anchor="ra")
     y = 92
 
     # --- hava durumu

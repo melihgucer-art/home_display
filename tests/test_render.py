@@ -453,3 +453,11 @@ def test_all_semt_rows_fit_with_errors_every_weekday(net, cfg, monkeypatch, day)
     texts = [t for t, _ in _texts(monkeypatch, cfg)]
     for label in ("Pazar", "Eczane", "Çelebi Sk.'tan", "Tatil"):
         assert label in texts, (day, label)
+
+
+@pytest.mark.parametrize("hh,mm", [(6, 7), (9, 45), (21, 7), (0, 33)])
+def test_snapshot_time_is_shown(net, cfg, monkeypatch, hh, mm):
+    from conftest import freeze
+    freeze(monkeypatch, real_dt.datetime(2026, 10, 22, hh, mm))
+    texts = [t for t, _ in _texts(monkeypatch, cfg)]
+    assert any(t.endswith(f"Güncelleme {hh:02d}:{mm:02d}") for t in texts), [t for t in texts if "Güncel" in t]
