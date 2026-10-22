@@ -11,6 +11,7 @@ import io
 import math
 import re
 import sys
+import time
 import tomllib
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -48,10 +49,29 @@ def load_config() -> dict:
         return tomllib.load(f)
 
 
+# Geçici hatalarda (bağlantı kopması, zaman aşımı, 429/5xx) bekleyip yeniden denenir
+RETRY_DELAYS = (2, 5)
+
+
+def http_get(url: str, **params) -> requests.Response:
+    for attempt, delay in enumerate((*RETRY_DELAYS, None)):
+        try:
+            r = requests.get(url, params=params or None, headers=UA, timeout=HTTP_TIMEOUT)
+            if r.status_code == 429 or r.status_code >= 500:
+                r.raise_for_status()
+        except (requests.ConnectionError, requests.Timeout, requests.HTTPError) as e:
+            if delay is None:
+                raise
+            print(f"[yeniden deneme {attempt + 1}] {url.split('/')[2]}: {e!r}", file=sys.stderr)
+            time.sleep(delay)
+            continue
+        r.raise_for_status()
+        return r
+    raise AssertionError("ulaşılamaz")
+
+
 def get_json(url: str, **params) -> dict | list:
-    r = requests.get(url, params=params or None, headers=UA, timeout=HTTP_TIMEOUT)
-    r.raise_for_status()
-    return r.json()
+    return http_get(url, **params).json()
 
 
 def tr_number(s: str) -> float:
@@ -235,8 +255,7 @@ def fetch_pharmacies(loc: dict, limit: int = 2) -> list[dict]:
     """Kadıköy nöbetçi eczaneleri (nobetcieczane.org), evin (Çelebi Sk.) yakınından uzağa sıralı."""
     import html as htmllib
     home = (loc.get("home_latitude", loc["latitude"]), loc.get("home_longitude", loc["longitude"]))
-    r = requests.get("https://nobetcieczane.org/istanbul/kadikoy", headers=UA, timeout=HTTP_TIMEOUT)
-    r.raise_for_status()
+    r = http_get("https://nobetcieczane.org/istanbul/kadikoy")
     cards = re.findall(r"<div class=\"pharm\"[^>]*data-pharm-card(.*?)>", r.text, re.S)
     if not cards:
         # Kadıköy'de her gün nöbetçi eczane vardır; hiç kart yoksa sayfa yapısı değişmiştir
@@ -544,7 +563,7 @@ def render_report(cfg: dict) -> tuple[Image.Image, list[str]]:
             for j, line in enumerate(lines):
                 d.text((cx, y + icon_px + 6 + j * 15), ellipsize(d, line, font(13), int(cell - 4)),
                        font=font(13), fill=0, anchor="ma")
-        y += 86
+        y += 84
     y += 2
 
     # --- semt
@@ -582,7 +601,7 @@ def render_report(cfg: dict) -> tuple[Image.Image, list[str]]:
         when = "bugün" if left == 0 else ("yarın" if left == 1 else f"{left} gün sonra")
         rows.append(("Tatil", f"{hname}, {hday.day} {AYLAR[hday.month - 1]} ({when})"))
 
-    bottom = H - (22 if errors else 6)
+    bottom = H - (18 if errors else 6)
     for label, text in rows:
         if y + 20 > bottom:
             break
@@ -597,8 +616,8 @@ def render_report(cfg: dict) -> tuple[Image.Image, list[str]]:
         y += 22
 
     if errors:
-        d.rectangle([0, H - 22, W, H], fill=255)
-        d.text((M, H - 20), ellipsize(d, "Alınamadı: " + ", ".join(errors), font(13), CW), font=font(13), fill=80)
+        d.rectangle([0, H - 17, W, H], fill=255)
+        d.text((M, H - 16), ellipsize(d, "Alınamadı: " + ", ".join(errors), font(12), CW), font=font(12), fill=80)
 
     return img.quantize(16, dither=Image.Dither.NONE).convert("L"), errors
 

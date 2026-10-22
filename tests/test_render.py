@@ -404,3 +404,52 @@ def test_pharmacy_rows_reference_celebi(net, frozen, cfg, monkeypatch):
     texts = [t for t, _ in _texts(monkeypatch, cfg)]
     assert "Çelebi Sk.'tan" in texts
     assert any(t.startswith("Şaşkınbakkal · ") and " m " in t and "0216 357 22 52" in t for t in texts)
+
+
+
+# ------------------------------------------------------------------ geçici hatalarda yeniden deneme
+
+def test_transient_disconnect_is_retried(net, frozen, cfg):
+    net.fail_times["finans.truncgil.com"] = 1  # 22 Ekim'de gerçekten olan: bağlantı yanıtsız kapandı
+    img, errors = hd.render_report(cfg)
+    assert errors == []
+    assert net.calls.count("finans.truncgil.com") == 2
+
+
+def test_two_transient_failures_still_recover(net, frozen, cfg):
+    net.fail_times["nobetcieczane.org"] = 2
+    _, errors = hd.render_report(cfg)
+    assert errors == []
+    assert net.calls.count("nobetcieczane.org") == 3
+
+
+def test_persistent_outage_gives_up_after_three_tries(net, frozen, cfg):
+    net.status["finans.truncgil.com"] = 503
+    _, errors = hd.render_report(cfg)
+    assert errors == ["Piyasa"]
+    assert net.calls.count("finans.truncgil.com") == 3
+
+
+def test_client_errors_are_not_retried(net, frozen, cfg):
+    net.status["date.nager.at"] = 404
+    _, errors = hd.render_report(cfg)
+    assert errors == ["Tatil"]
+    assert net.calls.count("date.nager.at") == 1
+
+
+def test_holiday_row_survives_error_footer(net, frozen, cfg, monkeypatch):
+    """22 Ekim'de görülen hata: altta 'Alınamadı' satırı çıkınca tatil satırı kayboluyordu."""
+    net.status["finans.truncgil.com"] = 503
+    texts = [t for t, _ in _texts(monkeypatch, cfg)]
+    assert "Tatil" in texts
+    assert any(t.startswith("Alınamadı: Piyasa") for t in texts)
+
+
+@pytest.mark.parametrize("day", range(19, 26))
+def test_all_semt_rows_fit_with_errors_every_weekday(net, cfg, monkeypatch, day):
+    from conftest import freeze
+    freeze(monkeypatch, real_dt.datetime(2026, 10, day, 12, 7))
+    net.status["marine-api.open-meteo.com"] = 500
+    texts = [t for t, _ in _texts(monkeypatch, cfg)]
+    for label in ("Pazar", "Eczane", "Çelebi Sk.'tan", "Tatil"):
+        assert label in texts, (day, label)

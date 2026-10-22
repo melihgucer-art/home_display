@@ -95,17 +95,28 @@ class FakeNet:
         self.payloads = default_payloads()
         self.status: dict[str, int] = {}
         self.raises: dict[str, Exception] = {}
+        self.fail_times: dict[str, int] = {}
         self.calls: list[str] = []
 
     def get(self, url, params=None, headers=None, timeout=None):
         assert timeout, "her istek zaman aşımıyla yapılmalı"
         host = url.split("/")[2]
         self.calls.append(host)
+        if host in self.fail_times and self.fail_times[host] > 0:
+            self.fail_times[host] -= 1
+            raise requests.ConnectionError("geçici kopma")
         if host in self.raises:
             raise self.raises[host]
         if host not in self.payloads:
             raise requests.ConnectionError(f"bilinmeyen sunucu {host}")
         return FakeResponse(self.payloads[host], self.status.get(host, 200))
+
+
+@pytest.fixture(autouse=True)
+def no_retry_wait(monkeypatch):
+    """Testlerde yeniden denemeler beklemeden yapılır."""
+    monkeypatch.setattr(hd, "RETRY_DELAYS", (0, 0))
+    monkeypatch.setattr(hd.time, "sleep", lambda s: None)
 
 
 @pytest.fixture
