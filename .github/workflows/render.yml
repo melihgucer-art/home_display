@@ -1,12 +1,14 @@
-# Panoyu günde 6 kez üretir ve "display" dalına yazar.
+# Panoyu günde 6 kez (Türkiye saatiyle 06, 09, 12, 15, 18, 21) üretir ve "display" dalına yazar.
+# GitHub zamanlanmış görevleri saatlerce geciktirebildiği/atlayabildiği için görev her saat çalışır;
+# server/should_render.py yeni bir güncelleme saati geçmediyse çizimi atlar (birkaç saniye sürer).
 # Kindle şu adresten çeker:
 #   https://raw.githubusercontent.com/<kullanıcı>/<depo>/display/display.png
 # Herkese açık depolarda GitHub Actions ücretsizdir.
 name: render
 on:
   schedule:
-    # Türkiye saatiyle 06:07, 09:07, 12:07, 15:07, 18:07, 21:07 (cron UTC'dir, TR = UTC+3)
-    - cron: "7 3,6,9,12,15,18 * * *"
+    # Her saat :07'de (cron UTC'dir); asıl güncelleme saatleri should_render.py'de
+    - cron: "7 * * * *"
   workflow_dispatch:
   push:
     paths: ["server/**", ".github/workflows/render.yml"]
@@ -24,14 +26,25 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      - name: Zamanı geldi mi?
+        id: due
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then echo "render=yes" >> "$GITHUB_OUTPUT"; exit 0; fi
+          git fetch -q --depth=1 origin display 2>/dev/null && last=$(git show FETCH_HEAD:updated.txt 2>/dev/null) || last=""
+          ans=$(python3 server/should_render.py "$last")
+          echo "son güncelleme: ${last:-yok} -> çiz: $ans"
+          echo "render=$ans" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v5
+        if: steps.due.outputs.render == 'yes'
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: server/requirements.txt
       - run: pip install -r server/requirements.txt
+        if: steps.due.outputs.render == 'yes'
       - name: Görüntüyü üret
         id: render
+        if: steps.due.outputs.render == 'yes'
         run: |
           mkdir -p out
           # 2 = hiçbir kaynağa ulaşılamadı: eski panoyu koru, işi hatasız bitir
@@ -39,7 +52,7 @@ jobs:
           python3 server/home_display.py out/display.png || code=$?
           if [ "$code" = 2 ]; then echo "skip=1" >> "$GITHUB_OUTPUT"; elif [ "$code" != 0 ]; then exit "$code"; fi
       - name: display dalına yaz
-        if: steps.render.outputs.skip != '1'
+        if: steps.due.outputs.render == 'yes' && steps.render.outputs.skip != '1'
         run: |
           cd out
           git init -q -b display

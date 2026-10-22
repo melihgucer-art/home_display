@@ -87,6 +87,8 @@ def test_parse_weather_night_flag(is_day, night):
 # ------------------------------------------------------------------ eczane ayrıştırma
 
 class _Resp:
+    status_code = 200
+
     def __init__(self, text):
         self.text = text
 

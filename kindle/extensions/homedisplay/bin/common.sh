@@ -83,7 +83,7 @@ refresh() {
             rm -f "$IMG.tmp"
             log "görüntü değişmemiş"
             [ "$WIFI_OFF_BETWEEN" = 1 ] && wifi_off
-            return 0
+            return 3
         fi
         mv "$IMG.tmp" "$IMG"
         if [ "$full" = 1 ]; then
@@ -117,13 +117,61 @@ is_night() {
     fi
 }
 
-wait_next() {
-    if [ "$WAIT_MODE" = "suspend" ] && [ -w "$RTC_DEV/wakealarm" ]; then
-        echo 0 > "$RTC_DEV/wakealarm"
-        echo "+$REFRESH_SECONDS" > "$RTC_DEV/wakealarm"
-        echo mem > /sys/power/state
-        sleep 5   # uyanınca ağ/sürücüler toparlansın
-    else
-        sleep "$REFRESH_SECONDS"
+POWERSAVE_FLAG="$DIR/PIL_TASARRUFU"
+POWER_STATE="${POWER_STATE:-/sys/power/state}"
+
+powersave_on() { [ "$WAIT_MODE" = "suspend" ] || [ -f "$POWERSAVE_FLAG" ]; }
+
+num() { v=$(echo "$1" | sed 's/^0*//'); echo "${v:-0}"; }
+
+# Bir sonraki kontrol saatine kaç saniye var (CHECK_TIMES boşsa REFRESH_SECONDS)
+seconds_until_next() {
+    if [ -z "$CHECK_TIMES" ]; then
+        echo "$REFRESH_SECONDS"
+        return
     fi
+    now=$(( $(num "$(date +%H)") * 3600 + $(num "$(date +%M)") * 60 + $(num "$(date +%S)") ))
+    best=""
+    first=""
+    for t in $CHECK_TIMES; do
+        target=$(( $(num "${t%%:*}") * 3600 + $(num "${t##*:}") * 60 ))
+        if [ -z "$first" ] || [ "$target" -lt "$first" ]; then first=$target; fi
+        if [ "$target" -gt $((now + 60)) ]; then
+            if [ -z "$best" ] || [ "$target" -lt "$best" ]; then best=$target; fi
+        fi
+    done
+    if [ -n "$best" ]; then echo $((best - now)); else echo $((first + 86400 - now)); fi
+}
+
+# Uyku modu: kindle-dash'in Kindle 4'te kullandığı mxc_rtc zamanlayıcısı, yoksa standart RTC alarmı
+suspend_for() {
+    secs="$1"
+    if [ -w "$RTC_WAKE" ]; then
+        [ "$(cat "$RTC_WAKE" 2>/dev/null)" = "0" ] && printf '%s' "$secs" > "$RTC_WAKE"
+    elif [ -w "$RTC_DEV/wakealarm" ]; then
+        echo 0 > "$RTC_DEV/wakealarm"
+        echo "+$secs" > "$RTC_DEV/wakealarm"
+    else
+        return 1
+    fi
+    echo mem > "$POWER_STATE"
+    return 0
+}
+
+wait_next() { wait_seconds "$(seconds_until_next)"; }
+
+wait_seconds() {
+    secs="$1"
+    if powersave_on; then
+        log "uykuya geçiliyor, $secs sn sonra uyanılacak"
+        sleep 10  # Home tuşuyla çıkmak için kısa bir fırsat
+        if suspend_for "$secs"; then
+            sleep 5  # uyanınca Wi-Fi ve sürücüler toparlansın
+            log "uyandı"
+            return 0
+        fi
+        log "uyku zamanlayıcısı bulunamadı, uyanık bekleniyor"
+        secs=$((secs - 10))
+    fi
+    sleep "$secs"
 }

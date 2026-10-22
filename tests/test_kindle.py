@@ -81,8 +81,9 @@ cat "{self.state}/body" > "$out"
             text = "\n".join(lines) + "\n"
         cfg.write_text(text)
 
-    def run(self, snippet: str, hour: str = "12") -> subprocess.CompletedProcess:
-        _exe(self.stub / "date", f'case "$1" in +%H) echo {hour} ;; *) /bin/date "$@" ;; esac\n')
+    def run(self, snippet: str, hour: str = "12", minute: str = "00", second: str = "00") -> subprocess.CompletedProcess:
+        _exe(self.stub / "date", f'case "$1" in +%H) echo {hour} ;; +%M) echo {minute} ;; +%S) echo {second} ;; '
+                                 f'*) /bin/date "$@" ;; esac\n')
         script = self.ext / "bin" / "_test.sh"
         # busybox sleep'i kendi içinden çalıştırır (PATH'e bakmaz); fonksiyon her iki kabukta da önceliklidir
         fake_sleep = f'sleep() {{ echo "sleep $*" >> "{self.calls}"; }}\n'
@@ -254,15 +255,17 @@ def test_loop_script_logic_matches(kindle):
 
 
 def test_wait_next_sleep_mode(kindle):
-    kindle.config(REFRESH_SECONDS=3600, WAIT_MODE="sleep")
+    kindle.config(REFRESH_SECONDS=3600, WAIT_MODE="sleep", CHECK_TIMES="")
     kindle.run("wait_next")
     assert "sleep 3600" in kindle.log()
 
 
 def test_wait_next_suspend_without_rtc_falls_back_to_sleep(kindle):
-    kindle.config(WAIT_MODE="suspend", RTC_DEV=str(kindle.tmpdir / "yok"), REFRESH_SECONDS=60)
+    kindle.config(WAIT_MODE="suspend", RTC_DEV=str(kindle.tmpdir / "yok"), RTC_WAKE=str(kindle.tmpdir / "yok2"),
+                  REFRESH_SECONDS=60, CHECK_TIMES="")
     kindle.run("wait_next")
-    assert "sleep 60" in kindle.log()
+    assert kindle.log()[-2:] == ["sleep 10", "sleep 50"]
+    assert "uyku zamanlayıcısı bulunamadı" in (kindle.ext / "homedisplay.log").read_text()
 
 
 def test_start_twice_does_not_spawn_twice(kindle):
@@ -466,3 +469,76 @@ def test_amazon_block_reports_failure_when_hosts_not_writable(kindle):
 def test_timezone_is_turkey(kindle):
     r = kindle.run('echo "$TZ"')
     assert r.stdout.strip() == "TRT-3"
+
+
+
+@pytest.mark.parametrize("hh,mm,ss,expected", [
+    ("05", "00", "00", 4800),            # 05:00 -> 06:20
+    ("06", "19", "30", 3 * 3600 + 30),   # 06:19:30: bir dakikadan az kaldıysa sonrakine (09:20)
+    ("06", "20", "00", 3 * 3600),        # tam kontrol anı -> 09:20
+    ("09", "08", "00", 12 * 60),         # 09:08 -> 09:20
+    ("21", "30", "00", 8 * 3600 + 50 * 60),  # gece: 21:30 -> ertesi gün 06:20 (tek seferde)
+    ("00", "00", "00", 6 * 3600 + 20 * 60),
+    ("23", "59", "59", 6 * 3600 + 20 * 60 + 1),
+])
+def test_seconds_until_next_check(kindle, hh, mm, ss, expected):
+    r = kindle.run("seconds_until_next", hour=hh, minute=mm, second=ss)
+    assert r.stderr == "", r.stderr
+    assert int(r.stdout.strip()) == expected
+
+
+def test_seconds_until_next_unsorted_and_leading_zeros(kindle):
+    kindle.config(CHECK_TIMES="18:05 08:09 07:00")
+    r = kindle.run("seconds_until_next", hour="08", minute="00", second="00")
+    assert int(r.stdout.strip()) == 9 * 60
+
+
+def test_suspend_uses_kindle4_rtc_and_power_state(kindle):
+    rtc = kindle.tmpdir / "wakeup_enable"
+    rtc.write_text("0")
+    state = kindle.tmpdir / "power_state"
+    state.write_text("")
+    kindle.config(WAIT_MODE="suspend", RTC_WAKE=str(rtc), CHECK_TIMES="")
+    kindle.config(REFRESH_SECONDS=1234)
+    r = kindle.run(f'POWER_STATE="{state}"\nwait_next')
+    assert r.returncode == 0, r.stderr
+    assert rtc.read_text() == "1234", "uyanma süresi yeni satır olmadan yazılmalı"
+    assert state.read_text().strip() == "mem"
+    log = (kindle.ext / "homedisplay.log").read_text()
+    assert "uykuya geçiliyor, 1234 sn" in log and "uyandı" in log
+
+
+def test_suspend_does_not_overwrite_pending_alarm(kindle):
+    rtc = kindle.tmpdir / "wakeup_enable"
+    rtc.write_text("500")
+    state = kindle.tmpdir / "power_state"
+    kindle.config(WAIT_MODE="suspend", RTC_WAKE=str(rtc), CHECK_TIMES="", REFRESH_SECONDS=99)
+    kindle.run(f'POWER_STATE="{state}"\nwait_next')
+    assert rtc.read_text() == "500"
+
+
+def test_powersave_menu_toggles_flag(kindle):
+    env = {"PATH": f"{kindle.stub}:{os.environ['PATH']}"}
+    flag = kindle.ext / "PIL_TASARRUFU"
+    subprocess.run(kindle.shell + [str(kindle.ext / "bin" / "powersave-on.sh")], env=env, timeout=10)
+    assert flag.exists()
+    assert kindle.run("powersave_on && echo ACIK").stdout.strip() == "ACIK"
+    subprocess.run(kindle.shell + [str(kindle.ext / "bin" / "powersave-off.sh")], env=env, timeout=10)
+    assert not flag.exists()
+    assert kindle.run("powersave_on && echo ACIK || echo KAPALI").stdout.strip() == "KAPALI"
+
+
+def test_refresh_reports_unchanged_with_code_3(kindle):
+    kindle.run("refresh 1")
+    r = kindle.run("refresh 0; echo rc=$?")
+    assert "rc=3" in r.stdout
+
+
+def test_loop_retries_when_cloud_update_is_late():
+    loop = (EXT / "bin" / "loop.sh").read_text()
+    assert "[ $rc -eq 3 ]" in loop and "wait_seconds 1200" in loop and "$retry -lt 2" in loop
+
+
+def test_default_check_times_follow_cloud_schedule():
+    text = (EXT / "config.sh").read_text()
+    assert 'CHECK_TIMES="06:20 09:20 12:20 15:20 18:20 21:20"' in text
