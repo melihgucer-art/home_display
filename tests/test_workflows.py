@@ -35,23 +35,64 @@ def _expand(field: str, lo: int, hi: int) -> list[int]:
     return sorted(set(out))
 
 
-def test_render_runs_six_times_a_day_in_turkey_daytime():
+def _simulate_day(run_minutes_utc, start=dt.datetime(2026, 10, 22, 0, 0, tzinfo=dt.timezone.utc), last=None):
+    """Verilen UTC dakikalarında çalışan zamanlanmış görevleri canlandırır; çizim zamanlarını döndürür."""
+    import sys
+    sys.path.insert(0, str(ROOT / "server"))
+    import should_render as sr
+    renders = []
+    for minute in run_minutes_utc:
+        now = start + dt.timedelta(minutes=minute)
+        if sr.should_render(last, now):
+            last = now.isoformat()
+            renders.append(now.astimezone(ZoneInfo("Europe/Istanbul")).strftime("%H:%M"))
+    return renders
+
+
+def test_render_cron_is_hourly():
     crons = [c["cron"] for c in load("render.yml")["on"]["schedule"]]
-    runs = []
-    for c in crons:
-        minute, hour, dom, mon, dow = c.split()
-        assert (dom, mon, dow) == ("*", "*", "*")
-        for h in _expand(hour, 0, 23):
-            for m in _expand(minute, 0, 59):
-                runs.append((h, m))
-    assert len(runs) == 6, runs
-    tr = sorted(
-        dt.datetime(2026, 10, 21, h, m, tzinfo=dt.timezone.utc).astimezone(ZoneInfo("Europe/Istanbul")).strftime("%H:%M")
-        for h, m in runs
-    )
-    assert tr == ["06:07", "09:07", "12:07", "15:07", "18:07", "21:07"]
-    # Kindle'ın gece saatleri (00-05) bulut güncellemeleriyle çakışmamalı
-    assert all(not (0 <= int(t[:2]) <= 5) for t in tr)
+    assert crons == ["7 * * * *"]
+
+
+def test_hourly_runs_render_six_times_a_day_in_turkey_daytime():
+    # 21 Ekim 21:07 TR'de güncellenmiş bir panodan başlayıp bir gün boyunca her saat :07'de çalış
+    renders = _simulate_day([60 * h + 7 for h in range(24)], last="2026-10-21T18:07:00+00:00")
+    assert renders == ["06:07", "09:07", "12:07", "15:07", "18:07", "21:07"]
+
+
+def test_late_and_dropped_runs_are_caught_up():
+    # 06:07, 07:07 ve 09:07 çalışmaları düştü, 12:07 çalışması 2 saat gecikti
+    minutes = [60 * h + 7 for h in range(24) if h not in (3, 4, 6, 9)]
+    renders = _simulate_day(minutes, last="2026-10-21T18:07:00+00:00")
+    assert renders == ["08:07", "10:07", "13:07", "15:07", "18:07", "21:07"]
+
+
+def test_no_renders_at_night():
+    renders = _simulate_day([60 * h + 7 for h in range(24)], last="2026-10-21T18:07:00+00:00")
+    assert not any("00:00" <= r < "06:00" for r in renders)
+
+
+def test_should_render_edge_inputs():
+    import sys
+    sys.path.insert(0, str(ROOT / "server"))
+    import should_render as sr
+    now = dt.datetime(2026, 10, 22, 7, 0, tzinfo=dt.timezone.utc)  # 10:00 TR
+    assert sr.should_render(None, now) and sr.should_render("", now) and sr.should_render("bozuk", now)
+    assert sr.should_render("2026-10-22T05:59:59Z", now)       # 08:59 TR < 09:00 dilimi
+    assert not sr.should_render("2026-10-22T06:00:01Z", now)   # 09:00 TR sonrası
+    assert not sr.should_render("2026-10-22T06:30:00", now)     # saat dilimi yoksa UTC kabul
+    # gece yarısından sonra: önceki günün 21:00 dilimi geçerli
+    midnight = dt.datetime(2026, 10, 22, 0, 30, tzinfo=dt.timezone.utc)  # 03:30 TR
+    assert sr.latest_slot(midnight).strftime("%d %H:%M") == "21 21:00"
+
+
+def test_due_step_guards_every_later_step():
+    steps = load("render.yml")["jobs"]["render"]["steps"]
+    names = [s.get("name") or s.get("uses") or s.get("run") for s in steps]
+    due_idx = next(i for i, s in enumerate(steps) if s.get("id") == "due")
+    assert due_idx == 1
+    for s in steps[due_idx + 1:]:
+        assert "steps.due.outputs.render == 'yes'" in s.get("if", ""), names
 
 
 def test_render_command_matches_cli():
@@ -63,7 +104,7 @@ def test_render_command_matches_cli():
     assert "workflow_dispatch" in wf["on"]
     assert 'code" = 2' in run and "skip=1" in run
     publish = next(s for s in steps if s.get("name") == "display dalına yaz")
-    assert publish["if"] == "steps.render.outputs.skip != '1'"
+    assert publish["if"] == "steps.due.outputs.render == 'yes' && steps.render.outputs.skip != '1'"
     push = publish["run"]
     assert "git add display.png" in push and "push -qf" in push and push.rstrip().endswith("display")
 
